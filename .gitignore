@@ -1,0 +1,8 @@
+# Spreadsheets hold real supplier and site data: never commit or deploy them
+*.xlsx
+*.xlsm
+*.xls
+*.csv
+.DS_Store
+__pycache__/
+.vercel

@@ -1,0 +1,775 @@
+<!doctype html>
+<html lang="en-GB">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Hire Check</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wght@600;800&family=Public+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500&display=swap">
+<style>
+html { color-scheme: light; }
+body { margin: 0; }
+img { max-width: 100%; }
+[hidden] { display: none !important; }
+/* Layout: plant-yellow site band, two drop zones, then one supplier at a time as a stack of ledger tables. */
+:root {
+  --bg: #eef0ed;
+  --surface: #ffffff;
+  --ink: #1b2326;
+  --muted: #5a6569;
+  --line: #d6dbd8;
+  --band: #f2b705;
+  --band-ink: #1b2326;
+  --ok: #2c7a4b;
+  --ok-fill: #c6efce;
+  --ok-ink: #14532d;
+  --flag: #b0361e;
+  --flag-fill: #fbe4de;
+  --warn: #8a5a00;
+  --warn-fill: #fdf0cc;
+  --focus: #1f6fd1;
+  --display: "Archivo", "Arial Narrow", Arial, sans-serif;
+  --body: "Public Sans", "Helvetica Neue", Arial, sans-serif;
+  --mono: "IBM Plex Mono", ui-monospace, Menlo, Consolas, monospace;
+  --radius: 6px;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    color-scheme: dark;
+    --bg: #131819; --surface: #1b2224; --ink: #e5e9e6; --muted: #9aa6a9; --line: #2e383b;
+    --ok: #6fcf97; --ok-fill: #1d3a29; --ok-ink: #b9ecca;
+    --flag: #f08a70; --flag-fill: #3a1f19; --warn: #f2c14e; --warn-fill: #352a10; --focus: #6aa8f0;
+  }
+}
+:root[data-theme="dark"] {
+  color-scheme: dark;
+  --bg: #131819; --surface: #1b2224; --ink: #e5e9e6; --muted: #9aa6a9; --line: #2e383b;
+  --ok: #6fcf97; --ok-fill: #1d3a29; --ok-ink: #b9ecca;
+  --flag: #f08a70; --flag-fill: #3a1f19; --warn: #f2c14e; --warn-fill: #352a10; --focus: #6aa8f0;
+}
+
+* { box-sizing: border-box; }
+body { background: var(--bg); color: var(--ink); font-family: var(--body); font-size: 15px; line-height: 1.5; }
+.wrap { max-width: 1120px; margin: 0 auto; padding-inline: 20px; padding-block: 0 64px; }
+h1, h2, h3 { font-family: var(--display); margin: 0; text-wrap: balance; }
+button, select, input { font: inherit; color: inherit; }
+:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
+.code { font-family: var(--mono); font-size: 13px; letter-spacing: 0.01em; white-space: nowrap; }
+.num { font-variant-numeric: tabular-nums; text-align: right; white-space: nowrap; }
+
+/* Site band */
+.band { background: var(--band); color: var(--band-ink); }
+.band .wrap { padding-block: 18px 16px; display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between; gap: 6px 24px; }
+.band h1 { font-size: 28px; font-weight: 800; letter-spacing: -0.01em; text-transform: uppercase; }
+.band p { margin: 0; font-weight: 600; font-size: 14px; }
+.stripe { height: 8px; background: repeating-linear-gradient(-45deg, var(--band-ink) 0 10px, var(--band) 10px 20px); }
+
+/* Drop zones */
+.inputs { display: grid; grid-template-columns: 1fr 1.4fr; gap: 16px; margin-top: 24px; }
+@media (max-width: 720px) { .inputs { grid-template-columns: 1fr; } }
+.drop { position: relative; background: var(--surface); border: 2px dashed var(--line); border-radius: var(--radius); padding: 18px 20px; display: flex; flex-direction: column; gap: 8px; transition: border-color .15s, background-color .15s; }
+.drop.over { border-color: var(--focus); }
+.drop.filled { border-style: solid; }
+.drop .step { font-size: 12px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.08em; color: var(--muted); }
+.drop h2 { font-size: 19px; font-weight: 600; }
+.drop p { margin: 0; color: var(--muted); font-size: 14px; }
+.drop input[type=file] { position: absolute; inset: 0; opacity: 0; cursor: pointer; width: 100%; }
+.drop .files { display: flex; flex-direction: column; gap: 4px; position: relative; z-index: 1; pointer-events: none; }
+.file { font-size: 14px; font-weight: 600; display: flex; gap: 8px; align-items: baseline; overflow-wrap: anywhere; }
+.file small { font-weight: 400; color: var(--muted); }
+.pick { align-self: flex-start; position: relative; z-index: 0; border: 1px solid var(--ink); border-radius: 4px; padding: 5px 12px; font-size: 14px; font-weight: 600; pointer-events: none; }
+
+.notice { margin-top: 16px; padding: 10px 14px; border-radius: var(--radius); font-size: 14px; display: flex; gap: 10px; align-items: baseline; flex-wrap: wrap; }
+.notice.example { background: var(--warn-fill); color: var(--ink); }
+.notice.example b { color: var(--warn); }
+.notice.error { background: var(--flag-fill); }
+.notice.error b { color: var(--flag); }
+
+/* Supplier switcher */
+.suppliers { margin-top: 28px; display: flex; flex-wrap: wrap; gap: 8px; }
+.sup-tab { border: 1px solid var(--line); background: var(--surface); border-radius: var(--radius); padding: 10px 14px; text-align: left; cursor: pointer; display: flex; flex-direction: column; gap: 2px; min-width: 0; max-width: 100%; }
+.sup-tab[aria-selected="true"] { border-color: var(--ink); box-shadow: inset 0 -3px 0 var(--band); }
+.sup-tab .n { font-weight: 700; font-size: 14px; overflow-wrap: anywhere; }
+.sup-tab .s { font-size: 13px; color: var(--muted); }
+.pill { display: inline-block; font-size: 12px; font-weight: 700; padding: 1px 8px; border-radius: 999px; white-space: nowrap; }
+.pill.ok { background: var(--ok-fill); color: var(--ok-ink); }
+.pill.flag { background: var(--flag-fill); color: var(--flag); }
+.pill.warn { background: var(--warn-fill); color: var(--warn); }
+
+/* Supplier result */
+.result { margin-top: 16px; background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius); }
+.result-head { padding: 18px 20px; border-bottom: 1px solid var(--line); display: flex; flex-wrap: wrap; gap: 14px 24px; align-items: flex-end; justify-content: space-between; }
+.result-head h2 { font-size: 22px; font-weight: 600; overflow-wrap: anywhere; }
+.result-head .meta { color: var(--muted); font-size: 14px; margin-top: 2px; }
+.controls { display: flex; flex-wrap: wrap; gap: 10px; align-items: flex-end; }
+.controls label { display: flex; flex-direction: column; gap: 3px; font-size: 12px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.06em; color: var(--muted); }
+.controls select { text-transform: none; letter-spacing: 0; font-weight: 400; font-size: 14px; padding: 6px 8px; border: 1px solid var(--line); border-radius: 4px; background: var(--surface); max-width: 260px; }
+.btn { border: 0; background: var(--ink); color: var(--surface); padding: 8px 16px; border-radius: 4px; font-weight: 700; font-size: 14px; cursor: pointer; }
+.btn:disabled { opacity: .5; cursor: default; }
+
+.totals { display: grid; grid-template-columns: repeat(4, 1fr); border-bottom: 1px solid var(--line); }
+@media (max-width: 720px) { .totals { grid-template-columns: repeat(2, 1fr); } }
+.total { padding: 14px 20px; display: flex; flex-direction: column; gap: 2px; border-right: 1px solid var(--line); }
+.total:last-child { border-right: 0; }
+.total b { font-family: var(--display); font-size: 30px; font-weight: 800; line-height: 1.1; font-variant-numeric: tabular-nums; }
+.total span { font-size: 13px; color: var(--muted); }
+.total.flag b { color: var(--flag); }
+.total.ok b { color: var(--ok); }
+.total.warn b { color: var(--warn); }
+
+section.block { padding: 20px; border-bottom: 1px solid var(--line); display: flex; flex-direction: column; gap: 10px; }
+section.block:last-child { border-bottom: 0; }
+.block-head { display: flex; flex-wrap: wrap; gap: 4px 12px; align-items: baseline; }
+.block-head h3 { font-size: 18px; font-weight: 600; }
+.block-head p { margin: 0; color: var(--muted); font-size: 14px; max-width: 68ch; }
+.empty { color: var(--muted); font-size: 14px; margin: 0; }
+
+.table-wrap { overflow-x: auto; border: 1px solid var(--line); border-radius: 4px; }
+table { border-collapse: collapse; width: 100%; font-size: 14px; }
+th { text-align: left; font-size: 12px; text-transform: uppercase; letter-spacing: 0.06em; color: var(--muted); font-weight: 700; padding: 8px 12px; border-bottom: 1px solid var(--line); background: var(--bg); white-space: nowrap; }
+td { padding: 7px 12px; border-bottom: 1px solid var(--line); vertical-align: top; }
+tr:last-child td { border-bottom: 0; }
+td.desc { min-width: 220px; }
+tr.group td { background: var(--bg); font-weight: 700; font-size: 13px; }
+tr.matched td { background: var(--ok-fill); color: var(--ok-ink); font-weight: 600; }
+.hint { font-size: 13px; }
+.hint .code { font-weight: 500; }
+.hint em { font-style: normal; color: var(--muted); }
+
+/* Step 3: marked-up spreadsheets */
+.marked { margin-top: 24px; background: var(--surface); border: 2px solid var(--ink); border-radius: var(--radius); padding: 18px 20px; display: flex; flex-direction: column; gap: 14px; }
+.mk-head { display: flex; flex-wrap: wrap; gap: 12px 24px; align-items: flex-end; justify-content: space-between; }
+.mk-head .step { font-size: 12px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.08em; color: var(--muted); }
+.mk-head h2 { font-size: 19px; font-weight: 600; }
+.mk-head p { margin: 2px 0 0; color: var(--muted); font-size: 14px; max-width: 68ch; }
+.mk-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; }
+.mk-row { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 14px; padding-block: 10px; border-top: 1px solid var(--line); }
+.mk-name { flex: 1 1 260px; display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.mk-name .code { white-space: normal; overflow-wrap: anywhere; font-weight: 500; }
+.mk-name small { color: var(--muted); font-size: 13px; }
+.btn.ghost { background: transparent; color: var(--ink); border: 1px solid var(--ink); }
+
+details > summary { cursor: pointer; font-weight: 600; font-size: 14px; }
+details[open] > summary { margin-bottom: 10px; }
+.foot { margin-top: 20px; color: var(--muted); font-size: 13px; max-width: 72ch; }
+
+@media (prefers-reduced-motion: reduce) { * { transition: none !important; } }
+</style>
+</head>
+<body>
+
+
+<header class="band">
+  <div class="wrap">
+    <h1>Hire Check</h1>
+    <p>ACS Civils · supplier hire reports against the ACS on-hire report</p>
+  </div>
+  <div class="stripe" aria-hidden="true"></div>
+</header>
+
+<main class="wrap">
+  <div class="inputs">
+    <div class="drop" id="acsDrop">
+      <span class="step">Step 1</span>
+      <h2>ACS on-hire report</h2>
+      <p>One workbook, one sheet per job. Every sheet is checked.</p>
+      <div class="files" id="acsFiles"></div>
+      <span class="pick">Choose file</span>
+      <input type="file" id="acsInput" accept=".xlsx,.xlsm" aria-label="Choose the ACS on-hire report">
+    </div>
+    <div class="drop" id="supDrop">
+      <span class="step">Step 2</span>
+      <h2>Supplier hire reports</h2>
+      <p>One Excel file per supplier. Add as many as you like.</p>
+      <div class="files" id="supFiles"></div>
+      <span class="pick">Choose files</span>
+      <input type="file" id="supInput" accept=".xlsx,.xlsm" multiple aria-label="Choose supplier hire reports">
+    </div>
+  </div>
+
+  <div id="notices"></div>
+  <div id="marked"></div>
+  <div class="suppliers" id="tabs" role="tablist" aria-label="Supplier reports"></div>
+  <div id="result"></div>
+
+  <p class="foot">Files are read in your browser and are not uploaded anywhere. Plant codes are matched ignoring capitals and spaces. ACS cells listing several assets (A1459741 + A1156216) count each asset. Marked-up copies only add green fill and bold: on supplier reports to lines found on the ACS report, on the ACS report to plant being charged (every asset on the line). Old .xls files: open in Excel and Save As .xlsx first.</p>
+</main>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/exceljs/4.4.0/exceljs.min.js"></script>
+<script>
+// Hire check engine: same matching rules as hire_check.py, plus the two-way report.
+(function (root) {
+  const NOT_CODES = new Set(["CODE", "PLANTCODE", "PLANT", "ITEM", "ITEMCODE", "PRODUCT", "PRODUCTCODE",
+    "REF", "REFERENCE", "STOCK", "STOCKCODE", "DESCRIPTION", "QTY", "QUANTITY", "DAYS", "RATE", "CHARGE",
+    "AMOUNT", "TOTAL", "SUBTOTAL", "VAT", "NET", "GROSS"]);
+  const SPLIT = /[+,;&]/;
+  const isDate = (v) => Object.prototype.toString.call(v) === "[object Date]";
+
+  // ExcelJS cell value -> plain value (string | number | Date | null)
+  function plain(v) {
+    if (v === null || v === undefined) return null;
+    if (isDate(v) || typeof v === "number" || typeof v === "string") return v;
+    if (typeof v === "boolean") return v;
+    if (typeof v === "object") {
+      if (Array.isArray(v.richText)) return v.richText.map(t => t.text).join("");
+      if ("result" in v) return plain(v.result);
+      if ("formula" in v || "sharedFormula" in v) return null;
+      if ("text" in v) return plain(v.text);
+      if ("error" in v) return null;
+    }
+    return String(v);
+  }
+
+  function norm(v) {
+    if (v === null || v === undefined) return "";
+    return String(v).replace(/\s+/g, "").toUpperCase();
+  }
+
+  function looksLikeCode(v) {
+    if (v === null || v === undefined || isDate(v) || typeof v === "boolean") return false;
+    const s = String(v).trim();
+    if (!s || s.includes(" ") || s.length > 30) return false;
+    const n = norm(s);
+    if (NOT_CODES.has(n)) return false;
+    return /[A-Z]/.test(n) || (/^\d+$/.test(n) && n.length >= 4);
+  }
+
+  // Codes inside one cell: the cell itself, or each part of "A1 + A2, A3"
+  function cellCodes(v) {
+    if (looksLikeCode(v)) return [norm(v)];
+    if (typeof v === "string" && SPLIT.test(v)) {
+      return v.split(SPLIT).filter(p => looksLikeCode(p) && /\d/.test(p)).map(norm);
+    }
+    return [];
+  }
+
+  const colLetter = (i) => { let s = ""; i++; while (i > 0) { const m = (i - 1) % 26; s = String.fromCharCode(65 + m) + s; i = Math.floor((i - 1) / 26); } return s; };
+  const colIndex = (l) => l.toUpperCase().split("").reduce((a, ch) => a * 26 + ch.charCodeAt(0) - 64, 0) - 1;
+  const dayKey = (v) => isDate(v) && !isNaN(v) ? v.toISOString().slice(0, 10) : null;
+  const text = (v) => v === null || v === undefined ? "" : (isDate(v) ? dayKey(v) : String(v).replace(/\s+/g, " ").trim());
+  const words = (s) => new Set(String(s || "").toLowerCase().match(/[a-z]{3,}/g) || []);
+
+  // book = {name, sheets:[{title, rows:[[plain values]]}]}
+  function readACS(book) {
+    const codes = new Map();   // code -> Set(sheet titles)
+    const items = [];          // asset rows, for the reverse check
+    for (const sh of book.sheets) {
+      let cols = null;
+      sh.rows.forEach((row, r) => {
+        row.forEach(v => cellCodes(v).forEach(c => {
+          if (!codes.has(c)) codes.set(c, new Set());
+          codes.get(c).add(sh.title);
+        }));
+        // header row: names the company and asset columns (can repeat mid-sheet)
+        const hdr = row.map(v => typeof v === "string" ? v.trim().toLowerCase() : "");
+        const asset = hdr.findIndex(h => /asset|plant\s*code|^code$/.test(h));
+        const company = hdr.findIndex(h => /company|supplier|hire\s*co/.test(h));
+        if (asset >= 0 && company >= 0) {
+          cols = { asset, company, width: hdr.reduce((w, h, i) => h ? i + 1 : w, 0),
+            desc: hdr.findIndex(h => /detail|desc|plant hired/.test(h)),
+            date: hdr.findIndex(h => /date/.test(h)),
+            rate: hdr.findIndex(h => /rate|price|cost/.test(h)),
+            status: hdr.findIndex(h => /status/.test(h)) };
+          return;
+        }
+        if (!cols) return;
+        const parts = cellCodes(row[cols.asset]);
+        if (!parts.length) return;
+        const status = cols.status >= 0 ? text(row[cols.status]) : "";
+        items.push({
+          sheet: sh.title, row: r + 1, codes: parts, width: cols.width,
+          assetText: text(row[cols.asset]),
+          company: text(row[cols.company]),
+          desc: cols.desc >= 0 ? text(row[cols.desc]) : "",
+          date: cols.date >= 0 ? dayKey(row[cols.date]) : null,
+          rate: cols.rate >= 0 ? row[cols.rate] : null,
+          offHire: /off/i.test(status),
+        });
+      });
+    }
+    return { codes, items };
+  }
+
+  function findCodeColumn(rows, codes) {
+    const width = Math.max(0, ...rows.map(r => r.length));
+    let best = -1, bestHits = 0;
+    for (let c = 0; c < width; c++) {
+      let hits = 0;
+      for (const row of rows) { const v = row[c]; if (looksLikeCode(v) && codes.has(norm(v))) hits++; }
+      if (hits > bestHits) { best = c; bestHits = hits; }
+    }
+    if (best >= 0) return best;
+    for (const row of rows.slice(0, 30)) {
+      const c = row.findIndex(v => typeof v === "string" && /code|plant|item|product/i.test(v));
+      if (c >= 0) return c;
+    }
+    return -1;
+  }
+
+  // Header row above the first charge line: the nearest row whose code-column cell is text but not a code
+  function supplierHeader(rows, col, firstRow) {
+    for (let r = firstRow - 1; r >= 0; r--) {
+      const v = rows[r][col];
+      if (typeof v === "string" && v.trim() && !looksLikeCode(v)) {
+        const hdr = rows[r].map(h => typeof h === "string" ? h.trim().toLowerCase() : "");
+        const pick = (...res) => { for (const re of res) { const i = hdr.findIndex(h => re.test(h)); if (i >= 0) return i; } return -1; };
+        return {
+          row: r, labels: rows[r].map(text),
+          desc: hdr.map((h, i) => /desc/.test(h) ? i : -1).filter(i => i >= 0),
+          rate: pick(/^rate$/, /\brate\b/, /price|amount|cost|charge$/),
+          date: pick(/start/, /on.?hire/, /^date$/, /date/),
+        };
+      }
+    }
+    return null;
+  }
+
+  function checkSupplier(book, acs, codeColOverride) {
+    const sheets = [];
+    const matched = [], flagged = [];
+    const seen = new Set();
+    for (const sh of book.sheets) {
+      const col = codeColOverride ? colIndex(codeColOverride) : findCodeColumn(sh.rows, acs.codes);
+      if (col < 0) continue;
+      const lineRows = [];
+      sh.rows.forEach((row, r) => { if (looksLikeCode(row[col])) lineRows.push(r); });
+      if (!lineRows.length) continue;
+      const hdr = supplierHeader(sh.rows, col, lineRows[0]);
+      sheets.push({ title: sh.title, col, colLetter: colLetter(col), header: hdr ? hdr.labels[col] : "" });
+      for (const r of lineRows) {
+        const row = sh.rows[r];
+        const code = norm(row[col]);
+        seen.add(code);
+        const line = {
+          sheet: sh.title, row: r + 1, code, raw: text(row[col]),
+          desc: hdr && hdr.desc.length ? [...new Set(hdr.desc.map(i => text(row[i])).filter(Boolean))].join(" ") : "",
+          rate: hdr && hdr.rate >= 0 ? row[hdr.rate] : null,
+          date: hdr && hdr.date >= 0 ? dayKey(row[hdr.date]) : null,
+          full: row.map(text).filter(x => x && x !== text(row[col])),
+        };
+        if (!line.desc) line.desc = line.full.slice(0, 3).join(" · ");
+        line.charged = !hdr || hdr.rate < 0 ? true : (typeof line.rate === "number" ? line.rate > 0 : !!text(line.rate));
+        if (acs.codes.has(code)) { line.jobs = [...acs.codes.get(code)].sort(); matched.push(line); }
+        else flagged.push(line);
+      }
+    }
+
+    // Which supplier on the ACS report this is: the company behind most of the matches
+    const tally = new Map();
+    for (const it of acs.items) if (it.codes.some(c => seen.has(c) && matched.some(m => m.code === c))) {
+      const k = it.company.toLowerCase(); tally.set(k, (tally.get(k) || 0) + 1);
+    }
+    const companyKey = [...tally.entries()].sort((a, b) => b[1] - a[1])[0]?.[0] || null;
+    const company = companyKey ? acs.items.find(i => i.company.toLowerCase() === companyKey).company : null;
+
+    // On the ACS report under that company, but not on the supplier's report
+    const notCharged = companyKey ? acs.items
+      .filter(i => i.company.toLowerCase() === companyKey && !i.offHire)
+      .map(i => ({ ...i, missing: i.codes.filter(c => !seen.has(c)) }))
+      .filter(i => i.missing.length) : [];
+
+    // Likely swaps: same on-hire date and a shared word in the description
+    for (const f of flagged) {
+      if (!f.date) continue;
+      const fw = words(f.desc);
+      let best = null, bestScore = 0;
+      for (const n of notCharged) {
+        if (n.date !== f.date) continue;
+        const score = [...words(n.desc)].filter(w => fw.has(w)).length;
+        if (score > bestScore) { best = n; bestScore = score; }
+      }
+      if (best) f.swap = { code: best.missing.length === 1 ? best.missing[0] : best.assetText, sheet: best.sheet, desc: best.desc };
+    }
+
+    return { name: book.name, sheets, matched, flagged, company, notCharged };
+  }
+
+  // Green fill + bold on matched lines of an ExcelJS workbook. Nothing else changes.
+  function markWorkbook(wb, result) {
+    const bySheet = new Map();
+    for (const m of result.matched) { if (!bySheet.has(m.sheet)) bySheet.set(m.sheet, new Set()); bySheet.get(m.sheet).add(m.row); }
+    for (const ws of wb.worksheets) {
+      const rows = bySheet.get(ws.name);
+      if (!rows) continue;
+      const width = ws.columnCount;
+      for (const r of rows) {
+        const row = ws.getRow(r);
+        for (let c = 1; c <= width; c++) {
+          const cell = row.getCell(c);
+          if (cell.isMerged && cell.master !== cell) continue;
+          // cells share style objects in ExcelJS: give this cell its own copy
+          cell.style = Object.assign({}, cell.style, {
+            fill: { type: "pattern", pattern: "solid", fgColor: { argb: "FFC6EFCE" }, bgColor: { argb: "FFC6EFCE" } },
+            font: Object.assign({}, cell.style && cell.style.font, { bold: true }),
+          });
+        }
+      }
+    }
+  }
+
+  // ACS lines charged on the supplier reports. A line listing several assets needs all of them charged.
+  function acsChargedLines(acs, results) {
+    const charged = new Set();
+    for (const r of results) for (const m of r.matched) charged.add(m.code);
+    return acs.items.filter(i => i.codes.every(c => charged.has(c)));
+  }
+
+  function markACS(wb, lines) {
+    const style = (cell) => {
+      if (cell.isMerged && cell.master !== cell) return;
+      cell.style = Object.assign({}, cell.style, {
+        fill: { type: "pattern", pattern: "solid", fgColor: { argb: "FFC6EFCE" }, bgColor: { argb: "FFC6EFCE" } },
+        font: Object.assign({}, cell.style && cell.style.font, { bold: true }),
+      });
+    };
+    for (const l of lines) {
+      const ws = wb.getWorksheet(l.sheet);
+      if (!ws) continue;
+      const row = ws.getRow(l.row);
+      for (let c = 1; c <= l.width; c++) style(row.getCell(c));
+    }
+  }
+
+  const api = { acsChargedLines, markACS, markWorkbook,  plain, norm, looksLikeCode, cellCodes, readACS, checkSupplier, colLetter, colIndex };
+  if (typeof module !== "undefined" && module.exports) module.exports = api; else root.HireEngine = api;
+})(typeof globalThis !== "undefined" ? globalThis : this);
+
+</script>
+<script>
+(function () {
+  const E = window.HireEngine;
+  const $ = (id) => document.getElementById(id);
+  const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+
+  const state = { acs: null, suppliers: [], active: 0, example: true, errors: [] };
+  let downloads = null;
+
+  // ---------- formatting ----------
+  const fmtDate = (k) => k ? `${k.slice(8, 10)}/${k.slice(5, 7)}/${k.slice(2, 4)}` : "";
+  const fmtRate = (v) => typeof v === "number" ? (v ? "£" + v.toFixed(2) : "–") : (v ? esc(v) : "–");
+  const plural = (n, one, many) => `${n} ${n === 1 ? one : (many || one + "s")}`;
+
+  // ---------- example data (shown until real files are added) ----------
+  function exampleData() {
+    const d = (s) => new Date(s + "T00:00:00Z");
+    const H = ["Details of plant hired", "Company", "Asset No", "Status", "Date", "Rates"];
+    const acsBook = { name: "Example ACS report.xlsx", sheets: [
+      { title: "Example Job A", rows: [H,
+        ["Pedestrian Roller", "Example Hire", "EX10021", "On-Hire", d("2026-07-14"), 80],
+        ["Radios 2no", "Example Hire", "EX20031 + EX20032", "On-Hire", d("2026-06-02"), 16],
+        ["Compressor 8 CFM Petrol", "Example Hire", "EX30044", "On-Hire", d("2026-08-05"), 78.75],
+        ["350mm Disc Cutter", "Example Hire", "EX40050", "On-Hire", d("2026-05-11"), 22.88]] },
+      { title: "Example Job B", rows: [H,
+        ["10ft Container", "Example Hire", "EX50060", "On-Hire", d("2025-11-03"), 15],
+        ["Wacker Plate", "Example Hire", "EX60070", "On-Hire", d("2026-04-20"), 45]] },
+    ] };
+    const SH = ["Customer", "Plant Code", "Plant Description", "Start Date", "Rate"];
+    const supBook = { name: "Example supplier report.xlsx", sheets: [{ title: "Live Hire", rows: [
+      ["Live Hire Report"], [], SH,
+      ["ACS Civils", "EX10021", "28in Pedestrian Roller", d("2026-07-14"), 80],
+      ["ACS Civils", "EX20031", "Motorola DP4400 Radio", d("2026-06-02"), 8],
+      ["ACS Civils", "EX20032", "Motorola DP4400 Radio", d("2026-06-02"), 8],
+      ["ACS Civils", "EX30051", "8 CFM Petrol Compressor", d("2026-08-05"), 78.75],
+      ["ACS Civils", "EX40050", "350mm Disc Cutter P2", d("2026-05-11"), 22.88],
+      ["ACS Civils", "EX50060", "Container - Steel 10ft", d("2025-11-03"), 15],
+      ["ACS Civils", "EX71002", "110V Breaker", d("2026-09-15"), 24],
+      ["ACS Civils", "EX88010", "Earth Spike", d("2026-06-02"), null],
+    ] }] };
+    const acs = E.readACS(acsBook);
+    return { acs: { name: acsBook.name, ...acs }, suppliers: [{ name: supBook.name, book: supBook, buf: null, override: "", result: E.checkSupplier(supBook, acs) }] };
+  }
+
+  // ---------- reading files ----------
+  async function readBook(file) {
+    if (/\.xls$/i.test(file.name)) throw new Error(`${file.name} is an old .xls file. Open it in Excel, Save As .xlsx, then add it again.`);
+    const buf = await file.arrayBuffer();
+    const wb = new ExcelJS.Workbook();
+    try { await wb.xlsx.load(buf.slice(0)); }
+    catch (e) { throw new Error(`${file.name} could not be read as an Excel workbook. Open it in Excel, Save As .xlsx, then add it again.`); }
+    const sheets = wb.worksheets.map((ws) => {
+      const rows = [];
+      for (let r = 1; r <= ws.rowCount; r++) {
+        const row = ws.getRow(r), out = [];
+        for (let c = 1; c <= ws.columnCount; c++) out.push(E.plain(row.getCell(c).value));
+        rows.push(out);
+      }
+      return { title: ws.name, rows };
+    });
+    return { buf, book: { name: file.name, sheets } };
+  }
+
+  function rerun() {
+    state.acsSave = null;
+    for (const s of state.suppliers) s.saveState = null, s.result = E.checkSupplier(s.book, state.acs, s.override || null);
+  }
+
+  async function addACS(file) {
+    state.errors = [];
+    try {
+      const { book, buf } = await readBook(file);
+      if (state.example) { state.suppliers = []; state.example = false; }
+      state.acsSave = null;
+      state.acs = { name: file.name, buf, sheetNames: book.sheets.map((s) => s.title), reportDate: reportDate(file.name), ...E.readACS(book) };
+      rerun();
+    } catch (e) { state.errors.push(e.message); }
+    render();
+  }
+
+  async function addSuppliers(files) {
+    state.errors = [];
+    if (state.example) { state.suppliers = []; state.acs = null; state.example = false; }
+    for (const file of files) {
+      if (/_checked\.xlsx$/i.test(file.name)) { state.errors.push(`${file.name} is a checked copy, so it was skipped. Add the original supplier report instead.`); continue; }
+      try {
+        const { buf, book } = await readBook(file);
+        const existing = state.suppliers.findIndex((s) => s.name === file.name);
+        const entry = { name: file.name, book, buf, override: "", result: null };
+        if (existing >= 0) state.suppliers[existing] = entry; else state.suppliers.push(entry);
+        state.active = existing >= 0 ? existing : state.suppliers.length - 1;
+      } catch (e) { state.errors.push(e.message); }
+    }
+    if (state.acs) rerun();
+    render();
+  }
+
+  // ---------- download ----------
+  async function buildChecked(s) {
+    const wb = new ExcelJS.Workbook();
+    await wb.xlsx.load(s.buf.slice(0));
+    E.markWorkbook(wb, s.result);
+    const out = await wb.xlsx.writeBuffer();
+    return new Blob([out], { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" });
+  }
+  const checkedName = (s) => s.name.replace(/\.xlsx?m?$/i, "") + "_checked.xlsx";
+
+  const acsLines = () => E.acsChargedLines(state.acs, state.suppliers.map((s) => s.result));
+  async function buildACS() {
+    const wb = new ExcelJS.Workbook();
+    await wb.xlsx.load(state.acs.buf.slice(0));
+    E.markACS(wb, acsLines());
+    return new Blob([await wb.xlsx.writeBuffer()], { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" });
+  }
+
+  // Saves one marked-up copy: i = supplier index, or "acs". Resolves "saved", "declined" or "failed".
+  async function saveChecked(i) {
+    const isAcs = i === "acs";
+    const s = isAcs ? null : state.suppliers[i];
+    const name = isAcs ? checkedName(state.acs) : checkedName(s);
+    const set = (v) => { if (isAcs) state.acsSave = v; else s.saveState = v; };
+    if (!downloads || !(isAcs ? state.acs.buf : s.buf)) return "failed";
+    set("saving"); renderMarked();
+    let result;
+    try {
+      await downloads.save({ filename: name, data: isAcs ? await buildACS() : await buildChecked(s) });
+      result = "saved";
+    } catch (e) {
+      result = e && e.code === "declined" ? "declined" : "failed";
+      if (result === "failed") {
+        state.errors = [e && e.code === "rate_limited" ? "A save is already waiting for your answer. Finish that one first." : `${name} could not be saved here. Run hire_check.py on your computer to make it instead.`];
+        renderNotices();
+      }
+    }
+    set(result); renderMarked();
+    return result;
+  }
+
+  async function saveAll() {
+    if (state.acsSave !== "saved" && await saveChecked("acs") === "failed") return;
+    for (let i = 0; i < state.suppliers.length; i++) {
+      if (state.suppliers[i].saveState === "saved") continue;
+      if (await saveChecked(i) === "failed") break;
+    }
+  }
+
+  // ---------- rendering ----------
+  function renderFiles() {
+    const acsBox = $("acsFiles"), supBox = $("supFiles");
+    acsBox.innerHTML = state.acs ? `<div class="file">${esc(state.acs.name)} <small>${state.acs.sheetNames ? plural(state.acs.sheetNames.length, "sheet") + ": " + esc(state.acs.sheetNames.join(", ")) : "example"}</small></div>` : "";
+    supBox.innerHTML = state.suppliers.map((s) => `<div class="file">${esc(s.name)}${s.buf ? "" : " <small>example</small>"}</div>`).join("");
+    $("acsDrop").classList.toggle("filled", !!state.acs && !state.example);
+    $("supDrop").classList.toggle("filled", state.suppliers.length > 0 && !state.example);
+  }
+
+  function renderNotices() {
+    const parts = [];
+    if (state.example) parts.push(`<div class="notice example"><b>Example data.</b> These figures are made up to show how a check reads. Add your ACS report and supplier reports above to run a real check.</div>`);
+    else if (!state.acs) parts.push(`<div class="notice example"><b>Add the ACS on-hire report</b> in step 1 to check ${state.suppliers.length ? "these supplier reports" : "supplier reports"} against it.</div>`);
+    else if (!state.suppliers.length) parts.push(`<div class="notice example"><b>Add supplier hire reports</b> in step 2. ${state.acs.codes.size} plant codes found across ${plural(state.acs.sheetNames.length, "job sheet")}.</div>`);
+    for (const e of state.errors) parts.push(`<div class="notice error"><b>Not added.</b> ${esc(e)}</div>`);
+    $("notices").innerHTML = parts.join("");
+  }
+
+  function counts(r) {
+    const charged = r.flagged.filter((f) => f.charged);
+    return { matched: r.matched.length, charged: charged.length, free: r.flagged.length - charged.length, notCharged: r.notCharged.length };
+  }
+
+  function renderTabs() {
+    const tabs = $("tabs");
+    if (!state.acs || !state.suppliers.length) { tabs.innerHTML = ""; return; }
+    tabs.innerHTML = state.suppliers.map((s, i) => {
+      const c = counts(s.result);
+      const status = c.charged ? `<span class="pill flag">${plural(c.charged, "charge")} not on ACS</span>` : `<span class="pill ok">All charges on ACS</span>`;
+      return `<button class="sup-tab" role="tab" id="tab${i}" aria-selected="${i === state.active}" data-i="${i}"><span class="n">${esc(s.name)}</span><span class="s">${status} ${c.notCharged ? `<span class="pill warn">${c.notCharged} not charged</span>` : ""}</span></button>`;
+    }).join("");
+    tabs.querySelectorAll(".sup-tab").forEach((b) => b.addEventListener("click", () => { state.active = +b.dataset.i; render(); }));
+  }
+
+  function columnOptions(s) {
+    const sh = s.book.sheets[0];
+    const width = Math.max(0, ...sh.rows.map((r) => r.length));
+    const auto = s.result.sheets[0];
+    const head = (c) => { for (const row of sh.rows.slice(0, 40)) { const v = row[c]; if (typeof v === "string" && v.trim() && !E.looksLikeCode(v)) return v.trim(); } return ""; };
+    let html = `<option value="">Auto${auto && !s.override ? ` (${auto.colLetter}${auto.header ? " · " + esc(auto.header) : ""})` : ""}</option>`;
+    for (let c = 0; c < width; c++) {
+      const L = E.colLetter(c), h = head(c);
+      html += `<option value="${L}" ${s.override === L ? "selected" : ""}>${L}${h ? " · " + esc(h.slice(0, 28)) : ""}</option>`;
+    }
+    return html;
+  }
+
+  function renderResult() {
+    const box = $("result");
+    if (!state.acs || !state.suppliers.length) { box.innerHTML = ""; return; }
+    const s = state.suppliers[state.active];
+    const r = s.result, c = counts(r);
+    const charged = r.flagged.filter((f) => f.charged), free = r.flagged.filter((f) => !f.charged);
+    const cols = r.sheets.map((x) => `${x.colLetter}${x.header ? " (" + esc(x.header) + ")" : ""}`).join(", ");
+
+    const flaggedTable = charged.length ? `<div class="table-wrap"><table>
+      <thead><tr><th>Row</th><th>Plant code</th><th>Plant</th><th>On hire</th><th class="num">Rate</th><th>Possible ACS match</th></tr></thead>
+      <tbody>${charged.map((f) => `<tr>
+        <td class="num">${f.row}</td><td class="code">${esc(f.raw)}</td><td class="desc">${esc(f.desc)}</td>
+        <td class="num">${fmtDate(f.date)}</td><td class="num">${fmtRate(f.rate)}</td>
+        <td class="hint">${f.swap ? `<span class="code">${esc(f.swap.code)}</span> <em>on ${esc(f.swap.sheet)}, same item and date. Asset number swapped?</em>` : `<em>${f.date && state.acs.reportDate && f.date > state.acs.reportDate ? "Hired after the ACS report date" : "None found"}</em>`}</td>
+      </tr>`).join("")}</tbody></table></div>` : `<p class="empty">Every charged line on this report is on the ACS report.</p>`;
+
+    const notChargedTable = !r.company ? `<p class="empty">No ACS plant matched this supplier, so its ACS lines can't be identified.</p>` :
+      r.notCharged.length ? `<div class="table-wrap"><table>
+      <thead><tr><th>Job</th><th>Plant</th><th>Asset no.</th><th>On hire</th><th class="num">ACS rate</th></tr></thead>
+      <tbody>${r.notCharged.map((n) => `<tr><td>${esc(n.sheet)}</td><td class="desc">${esc(n.desc)}</td><td class="code">${n.missing.map(esc).join(", ")}${n.missing.length < n.codes.length ? ` <em class="hint">of ${esc(n.assetText)}</em>` : ""}</td><td class="num">${fmtDate(n.date)}</td><td class="num">${fmtRate(n.rate)}</td></tr>`).join("")}</tbody></table></div>`
+      : `<p class="empty">Everything listed under ${esc(r.company)} on the ACS report is on this supplier report.</p>`;
+
+    const byJob = new Map();
+    for (const m of r.matched) { const k = m.jobs.join(", "); if (!byJob.has(k)) byJob.set(k, []); byJob.get(k).push(m); }
+    const jobs = [...byJob.entries()].sort((a, b) => b[1].length - a[1].length);
+    const matchedTable = r.matched.length ? `<div class="table-wrap"><table>
+      <thead><tr><th>Row</th><th>Plant code</th><th>Plant</th><th>On hire</th><th class="num">Rate</th></tr></thead>
+      <tbody>${jobs.map(([job, ms]) => `<tr class="group"><td colspan="5">${esc(job)} · ${ms.length}</td></tr>` + ms.map((m) => `<tr class="matched"><td class="num">${m.row}</td><td class="code">${esc(m.raw)}</td><td class="desc">${esc(m.desc)}</td><td class="num">${fmtDate(m.date)}</td><td class="num">${fmtRate(m.rate)}</td></tr>`).join("")).join("")}</tbody></table></div>`
+      : `<p class="empty">No lines on this report match the ACS report. Check the plant code column above.</p>`;
+
+    const freeTable = free.length ? `<details><summary>${plural(free.length, "line")} not on the ACS report with no charge (accessories, notes)</summary><div class="table-wrap"><table>
+      <thead><tr><th>Row</th><th>Plant code</th><th>Plant</th><th>On hire</th></tr></thead>
+      <tbody>${free.map((f) => `<tr><td class="num">${f.row}</td><td class="code">${esc(f.raw)}</td><td class="desc">${esc(f.desc)}</td><td class="num">${fmtDate(f.date)}</td></tr>`).join("")}</tbody></table></div></details>` : "";
+
+    box.innerHTML = `<div class="result" role="tabpanel" aria-labelledby="tab${state.active}">
+      <div class="result-head">
+        <div><h2>${esc(s.name)}</h2><div class="meta">${r.company ? `Listed as <b>${esc(r.company)}</b> on the ACS report · ` : ""}plant codes read from column ${cols || "none found"}</div></div>
+        <div class="controls">
+          <label for="codeCol">Plant code column<select id="codeCol">${columnOptions(s)}</select></label>
+        </div>
+      </div>
+      <div class="totals">
+        <div class="total ok"><b>${c.matched}</b><span>on both reports</span></div>
+        <div class="total ${c.charged ? "flag" : "ok"}"><b>${c.charged}</b><span>charged, not on ACS</span></div>
+        <div class="total ${c.notCharged ? "warn" : "ok"}"><b>${c.notCharged}</b><span>on ACS, not charged</span></div>
+        <div class="total"><b>${c.free}</b><span>no-charge lines not on ACS</span></div>
+      </div>
+      <section class="block">
+        <div class="block-head"><h3>Charged but not on the ACS report</h3><p>Lines with a rate whose plant code is on none of the ACS job sheets. A possible match is ACS plant from this supplier with the same on-hire date and a similar description.</p></div>
+        ${flaggedTable}
+      </section>
+      <section class="block">
+        <div class="block-head"><h3>On the ACS report but not charged</h3><p>${r.company ? `Plant listed under ${esc(r.company)} on the ACS report that isn't on this supplier report. Probably off-hired, or swapped for another unit.` : ""}</p></div>
+        ${notChargedTable}
+      </section>
+      <section class="block">
+        <div class="block-head"><h3>On both reports</h3><p>Grouped by ACS job sheet. These lines are green and bold in the marked-up spreadsheet.</p></div>
+        ${matchedTable}
+      </section>
+      ${free.length ? `<section class="block">${freeTable}</section>` : ""}
+    </div>`;
+
+    $("codeCol").addEventListener("change", (e) => { s.override = e.target.value; s.saveState = null; state.acsSave = null; s.result = E.checkSupplier(s.book, state.acs, s.override || null); render(); });
+  }
+
+  function renderMarked() {
+    const box = $("marked");
+    const real = state.acs && state.suppliers.length && !state.example;
+    if (!real) { box.innerHTML = ""; return; }
+    const label = { saving: "Saving…", saved: "Saved", declined: "Not saved", failed: "Not saved" };
+    const pill = (st) => st ? `<span class="pill ${st === "saved" ? "ok" : st === "saving" ? "warn" : "flag"}">${label[st]}</span>` : "";
+    const lines = acsLines(), acsTotal = state.acs.items.length;
+    const acsRow = `<li class="mk-row">
+        <span class="mk-name"><span class="code">${esc(checkedName(state.acs))}</span><small>ACS report · ${plural(lines.length, "line")} charged on the supplier reports marked green and bold · ${acsTotal - lines.length} of ${acsTotal} plant lines left unmarked</small></span>
+        ${pill(state.acsSave)}
+        <button class="btn ghost" data-save="acs" ${!downloads || state.acsSave === "saving" ? "disabled" : ""}>${state.acsSave === "saved" ? "Save again" : "Download"}</button>
+      </li>`;
+    const rows = acsRow + state.suppliers.map((s, i) => {
+      const c = counts(s.result);
+      return `<li class="mk-row">
+        <span class="mk-name"><span class="code">${esc(checkedName(s))}</span><small>${plural(c.matched, "line")} marked green and bold · ${c.charged + c.free} not on ACS left unmarked</small></span>
+        ${pill(s.saveState)}
+        <button class="btn ghost" data-save="${i}" ${!downloads || s.saveState === "saving" ? "disabled" : ""}>${s.saveState === "saved" ? "Save again" : "Download"}</button>
+      </li>`;
+    }).join("");
+    const pending = state.acsSave === "saving" || state.suppliers.some((s) => s.saveState === "saving");
+    box.innerHTML = `<section class="marked">
+      <div class="mk-head">
+        <div><span class="step">Step 3</span><h2>Marked-up spreadsheets</h2>
+        <p>The ACS report with plant that suppliers are charging for in green and bold, and each supplier report with lines found on the ACS report in green and bold. Your original files are not changed.</p></div>
+        <button class="btn" id="saveAll" ${!downloads || pending ? "disabled" : ""}>Download all (${state.suppliers.length + 1})</button>
+      </div>
+      <ul class="mk-list">${rows}</ul>
+      ${downloads ? "" : `<p class="empty">Downloads aren't available in this view. Open the page on claude.ai, or run hire_check.py on your computer to make the same copies.</p>`}
+    </section>`;
+    box.querySelectorAll("[data-save]").forEach((b) => b.addEventListener("click", () => saveChecked(b.dataset.save === "acs" ? "acs" : +b.dataset.save)));
+    const all = $("saveAll"); if (all) all.addEventListener("click", saveAll);
+  }
+
+  function render() { renderFiles(); renderNotices(); renderMarked(); renderTabs(); renderResult(); }
+
+  // ACS report date from its filename (e.g. "01.09.26"), used to explain recent hires
+  function reportDate(name) {
+    const m = /(\d{2})[.\-_](\d{2})[.\-_](\d{2,4})/.exec(name || "");
+    if (!m) return null;
+    const y = m[3].length === 2 ? "20" + m[3] : m[3];
+    return `${y}-${m[2]}-${m[1]}`;
+  }
+
+  // ---------- wiring ----------
+  function wireDrop(zoneId, inputId, handler) {
+    const zone = $(zoneId), input = $(inputId);
+    input.addEventListener("change", () => { if (input.files.length) handler([...input.files]); input.value = ""; });
+    ["dragenter", "dragover"].forEach((ev) => zone.addEventListener(ev, (e) => { e.preventDefault(); zone.classList.add("over"); }));
+    ["dragleave", "drop"].forEach((ev) => zone.addEventListener(ev, () => zone.classList.remove("over")));
+    zone.addEventListener("drop", (e) => { e.preventDefault(); const f = [...e.dataTransfer.files]; if (f.length) handler(f); });
+  }
+  wireDrop("acsDrop", "acsInput", (files) => addACS(files[0]));
+  wireDrop("supDrop", "supInput", (files) => addSuppliers(files));
+
+  Object.assign(state, exampleData());
+  state.acs.reportDate = "2026-09-01";
+  render();
+
+  if (window.claude && window.claude.use) {
+    window.claude.use("downloads").then((d) => { downloads = d; renderMarked(); }).catch(() => {});
+  } else {
+    // Standalone site: an ordinary browser download
+    downloads = { save: async ({ filename, data }) => {
+      const url = URL.createObjectURL(data);
+      const a = Object.assign(document.createElement("a"), { href: url, download: filename });
+      document.body.appendChild(a); a.click(); a.remove();
+      setTimeout(() => URL.revokeObjectURL(url), 10000);
+      await new Promise((r) => setTimeout(r, 400));   // let the browser start one download before the next
+      return { status: "saved" };
+    } };
+    renderMarked();
+  }
+})();
+
+</script>
+
+</body>
+</html>
