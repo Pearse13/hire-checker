@@ -1,6 +1,6 @@
 # Hire Checker
 
-Weekly check of what plant hire suppliers are charging ACS Civils against the ACS on-hire report.
+Weekly check of what plant hire suppliers are charging ACS against the ACS on-hire report.
 
 ## Web app
 

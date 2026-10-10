@@ -163,7 +163,7 @@ details[open] > summary { margin-bottom: 10px; }
 <header class="band">
   <div class="wrap">
     <h1>Hire Check</h1>
-    <p>ACS Civils · supplier hire reports against the ACS on-hire report</p>
+    <p>Supplier hire reports against the ACS on-hire report</p>
   </div>
   <div class="stripe" aria-hidden="true"></div>
 </header>
@@ -467,14 +467,14 @@ details[open] > summary { margin-bottom: 10px; }
     const SH = ["Customer", "Plant Code", "Plant Description", "Start Date", "Rate"];
     const supBook = { name: "Example supplier report.xlsx", sheets: [{ title: "Live Hire", rows: [
       ["Live Hire Report"], [], SH,
-      ["ACS Civils", "EX10021", "28in Pedestrian Roller", d("2026-07-14"), 80],
-      ["ACS Civils", "EX20031", "Motorola DP4400 Radio", d("2026-06-02"), 8],
-      ["ACS Civils", "EX20032", "Motorola DP4400 Radio", d("2026-06-02"), 8],
-      ["ACS Civils", "EX30051", "8 CFM Petrol Compressor", d("2026-08-05"), 78.75],
-      ["ACS Civils", "EX40050", "350mm Disc Cutter P2", d("2026-05-11"), 22.88],
-      ["ACS Civils", "EX50060", "Container - Steel 10ft", d("2025-11-03"), 15],
-      ["ACS Civils", "EX71002", "110V Breaker", d("2026-09-15"), 24],
-      ["ACS Civils", "EX88010", "Earth Spike", d("2026-06-02"), null],
+      ["ACS", "EX10021", "28in Pedestrian Roller", d("2026-07-14"), 80],
+      ["ACS", "EX20031", "Motorola DP4400 Radio", d("2026-06-02"), 8],
+      ["ACS", "EX20032", "Motorola DP4400 Radio", d("2026-06-02"), 8],
+      ["ACS", "EX30051", "8 CFM Petrol Compressor", d("2026-08-05"), 78.75],
+      ["ACS", "EX40050", "350mm Disc Cutter P2", d("2026-05-11"), 22.88],
+      ["ACS", "EX50060", "Container - Steel 10ft", d("2025-11-03"), 15],
+      ["ACS", "EX71002", "110V Breaker", d("2026-09-15"), 24],
+      ["ACS", "EX88010", "Earth Spike", d("2026-06-02"), null],
     ] }] };
     const acs = E.readACS(acsBook);
     return { acs: { name: acsBook.name, ...acs }, suppliers: [{ name: supBook.name, book: supBook, buf: null, override: "", result: E.checkSupplier(supBook, acs) }] };

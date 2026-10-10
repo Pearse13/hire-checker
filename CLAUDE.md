@@ -1,6 +1,6 @@
 # ACS Hire Report Check
 
-Weekly check of what plant hire suppliers are charging ACS Civils against the ACS in-house hire report.
+Weekly check of what plant hire suppliers are charging ACS against the ACS in-house hire report.
 
 ## The job
 
