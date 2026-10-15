@@ -163,7 +163,7 @@ tr.matched td { background: var(--ok-fill); color: var(--ok-ink); font-weight: 6
 
 details > summary { cursor: pointer; font-weight: 600; font-size: 14px; }
 details[open] > summary { margin-bottom: 10px; }
-.foot { margin-top: 20px; color: var(--muted); font-size: 13px; max-width: 72ch; }
+.intro { margin: 22px 0 0; font-size: 16px; line-height: 1.55; max-width: 68ch; }
 
 @media (prefers-reduced-motion: reduce) { * { transition: none !important; } }
 </style>
@@ -174,12 +174,12 @@ details[open] > summary { margin-bottom: 10px; }
 <header class="band">
   <div class="wrap">
     <h1>Hire Check</h1>
-    <p>Supplier hire reports against the ACS on-hire report</p>
   </div>
   <div class="stripe" aria-hidden="true"></div>
 </header>
 
 <main class="wrap">
+  <p class="intro">Checks that the hired plant we're being charged for is still on site. Add this week's ACS on-hire report and the supplier hire reports, and it shows what matches, what doesn't, and what's probably been swapped or off-hired, with marked-up spreadsheets to download.</p>
   <div class="inputs">
     <div class="drop" id="acsDrop">
       <span class="step">Step 1</span>
@@ -205,7 +205,6 @@ details[open] > summary { margin-bottom: 10px; }
   <div class="suppliers" id="tabs" role="tablist" aria-label="Supplier reports"></div>
   <div id="result"></div>
 
-  <p class="foot">Files are read in your browser and are not uploaded anywhere. Plant codes are matched ignoring capitals and spaces. ACS cells listing several assets (A1459741 + A1156216) count each asset. Supplier copies: lines found on the ACS report in green and bold, with an added "ACS match" column giving the ACS sheet and cell. ACS copy: plant being charged (every asset on the line) in bold with a thick border, your colours kept. Suggestions are never marked. Old .xls files: open in Excel and Save As .xlsx first.</p>
 </main>
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/exceljs/4.4.0/exceljs.min.js"></script>
