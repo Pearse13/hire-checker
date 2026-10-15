@@ -309,7 +309,7 @@
     </section>`;
   }
 
-  function render() { renderFiles(); renderNotices(); renderSuggestions(); renderMarked(); renderTabs(); renderResult(); }
+  function render() { document.body.classList.toggle("empty", !(state.acs && state.suppliers.length)); renderFiles(); renderNotices(); renderSuggestions(); renderMarked(); renderTabs(); renderResult(); }
 
   // ACS report date from its filename (e.g. "01.09.26"), used to explain recent hires
   function reportDate(name) {

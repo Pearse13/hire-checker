@@ -50,8 +50,12 @@ img { max-width: 100%; }
 }
 
 * { box-sizing: border-box; }
-body { background: var(--bg); color: var(--ink); font-family: var(--body); font-size: 15px; line-height: 1.5; }
-.wrap { max-width: 1120px; margin: 0 auto; padding-inline: 20px; padding-block: 0 64px; }
+body { background: var(--bg); color: var(--ink); font-family: var(--body); font-size: 15px; line-height: 1.5; min-height: 100vh; min-height: 100dvh; display: flex; flex-direction: column; }
+.wrap { max-width: 1120px; width: 100%; margin: 0 auto; padding-inline: 20px; padding-block: 0 64px; }
+/* Before a check runs, the upload boxes sit in the middle of the screen */
+main.wrap { flex: 1; }
+body.empty main.wrap { display: flex; flex-direction: column; justify-content: center; padding-block: 32px; }
+body.empty .inputs { margin-top: 0; }
 h1, h2, h3 { font-family: var(--display); margin: 0; text-wrap: balance; }
 button, select, input { font: inherit; color: inherit; }
 :focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
@@ -66,19 +70,19 @@ button, select, input { font: inherit; color: inherit; }
 .stripe { height: 8px; background: repeating-linear-gradient(-45deg, var(--band-ink) 0 10px, var(--band) 10px 20px); }
 
 /* Drop zones */
-.inputs { display: grid; grid-template-columns: 1fr 1.4fr; gap: 16px; margin-top: 24px; }
+.inputs { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-top: 24px; }
 @media (max-width: 720px) { .inputs { grid-template-columns: 1fr; } }
-.drop { position: relative; background: var(--surface); border: 2px dashed var(--line); border-radius: var(--radius); padding: 18px 20px; display: flex; flex-direction: column; gap: 8px; transition: border-color .15s, background-color .15s; }
+.drop { position: relative; background: var(--surface); border: 2px dashed var(--line); border-radius: var(--radius); padding: 22px 20px; display: flex; flex-direction: column; align-items: center; text-align: center; gap: 8px; transition: border-color .15s, background-color .15s; }
 .drop.over { border-color: var(--focus); }
 .drop.filled { border-style: solid; }
 .drop .step { font-size: 12px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.08em; color: var(--muted); }
 .drop h2 { font-size: 19px; font-weight: 600; }
 .drop p { margin: 0; color: var(--muted); font-size: 14px; }
 .drop input[type=file] { position: absolute; inset: 0; opacity: 0; cursor: pointer; width: 100%; }
-.drop .files { display: flex; flex-direction: column; gap: 4px; position: relative; z-index: 1; pointer-events: none; }
-.file { font-size: 14px; font-weight: 600; display: flex; gap: 8px; align-items: baseline; overflow-wrap: anywhere; }
+.drop .files { display: flex; flex-direction: column; align-items: center; gap: 4px; position: relative; z-index: 1; pointer-events: none; }
+.file { font-size: 14px; font-weight: 600; display: flex; flex-wrap: wrap; justify-content: center; gap: 2px 8px; align-items: baseline; overflow-wrap: anywhere; }
 .file small { font-weight: 400; color: var(--muted); }
-.pick { align-self: flex-start; position: relative; z-index: 0; border: 1px solid var(--ink); border-radius: 4px; padding: 5px 12px; font-size: 14px; font-weight: 600; pointer-events: none; }
+.pick { align-self: center; position: relative; z-index: 0; border: 1px solid var(--ink); border-radius: 4px; padding: 5px 12px; font-size: 14px; font-weight: 600; pointer-events: none; }
 
 .notice { margin-top: 16px; padding: 10px 14px; border-radius: var(--radius); font-size: 14px; display: flex; gap: 10px; align-items: baseline; flex-wrap: wrap; }
 .notice.info { background: var(--warn-fill); color: var(--ink); }
@@ -902,7 +906,7 @@ details[open] > summary { margin-bottom: 10px; }
     </section>`;
   }
 
-  function render() { renderFiles(); renderNotices(); renderSuggestions(); renderMarked(); renderTabs(); renderResult(); }
+  function render() { document.body.classList.toggle("empty", !(state.acs && state.suppliers.length)); renderFiles(); renderNotices(); renderSuggestions(); renderMarked(); renderTabs(); renderResult(); }
 
   // ACS report date from its filename (e.g. "01.09.26"), used to explain recent hires
   function reportDate(name) {
