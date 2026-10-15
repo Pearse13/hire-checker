@@ -1,0 +1,221 @@
+<!doctype html>
+<html lang="en-GB">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Hire Check</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wght@600;800&family=Public+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500&display=swap">
+<style>
+html { color-scheme: light; }
+body { margin: 0; }
+img { max-width: 100%; }
+[hidden] { display: none !important; }
+/* Layout: plant-yellow site band, two drop zones, then one supplier at a time as a stack of ledger tables. */
+:root {
+  --bg: #eef0ed;
+  --surface: #ffffff;
+  --ink: #1b2326;
+  --muted: #5a6569;
+  --line: #d6dbd8;
+  --band: #f2b705;
+  --band-ink: #1b2326;
+  --ok: #2c7a4b;
+  --ok-fill: #c6efce;
+  --ok-ink: #14532d;
+  --flag: #b0361e;
+  --flag-fill: #fbe4de;
+  --warn: #8a5a00;
+  --warn-fill: #fdf0cc;
+  --focus: #1f6fd1;
+  --display: "Archivo", "Arial Narrow", Arial, sans-serif;
+  --body: "Public Sans", "Helvetica Neue", Arial, sans-serif;
+  --mono: "IBM Plex Mono", ui-monospace, Menlo, Consolas, monospace;
+  --radius: 6px;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    color-scheme: dark;
+    --bg: #131819; --surface: #1b2224; --ink: #e5e9e6; --muted: #9aa6a9; --line: #2e383b;
+    --ok: #6fcf97; --ok-fill: #1d3a29; --ok-ink: #b9ecca;
+    --flag: #f08a70; --flag-fill: #3a1f19; --warn: #f2c14e; --warn-fill: #352a10; --focus: #6aa8f0;
+  }
+}
+:root[data-theme="dark"] {
+  color-scheme: dark;
+  --bg: #131819; --surface: #1b2224; --ink: #e5e9e6; --muted: #9aa6a9; --line: #2e383b;
+  --ok: #6fcf97; --ok-fill: #1d3a29; --ok-ink: #b9ecca;
+  --flag: #f08a70; --flag-fill: #3a1f19; --warn: #f2c14e; --warn-fill: #352a10; --focus: #6aa8f0;
+}
+
+* { box-sizing: border-box; }
+body { background: var(--bg); color: var(--ink); font-family: var(--body); font-size: 15px; line-height: 1.5; }
+.wrap { max-width: 1120px; margin: 0 auto; padding-inline: 20px; padding-block: 0 64px; }
+h1, h2, h3 { font-family: var(--display); margin: 0; text-wrap: balance; }
+button, select, input { font: inherit; color: inherit; }
+:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
+.code { font-family: var(--mono); font-size: 13px; letter-spacing: 0.01em; white-space: nowrap; }
+.num { font-variant-numeric: tabular-nums; text-align: right; white-space: nowrap; }
+
+/* Site band */
+.band { background: var(--band); color: var(--band-ink); }
+.band .wrap { padding-block: 18px 16px; display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between; gap: 6px 24px; }
+.band h1 { font-size: 28px; font-weight: 800; letter-spacing: -0.01em; text-transform: uppercase; }
+.band p { margin: 0; font-weight: 600; font-size: 14px; }
+.stripe { height: 8px; background: repeating-linear-gradient(-45deg, var(--band-ink) 0 10px, var(--band) 10px 20px); }
+
+/* Drop zones */
+.inputs { display: grid; grid-template-columns: 1fr 1.4fr; gap: 16px; margin-top: 24px; }
+@media (max-width: 720px) { .inputs { grid-template-columns: 1fr; } }
+.drop { position: relative; background: var(--surface); border: 2px dashed var(--line); border-radius: var(--radius); padding: 18px 20px; display: flex; flex-direction: column; gap: 8px; transition: border-color .15s, background-color .15s; }
+.drop.over { border-color: var(--focus); }
+.drop.filled { border-style: solid; }
+.drop .step { font-size: 12px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.08em; color: var(--muted); }
+.drop h2 { font-size: 19px; font-weight: 600; }
+.drop p { margin: 0; color: var(--muted); font-size: 14px; }
+.drop input[type=file] { position: absolute; inset: 0; opacity: 0; cursor: pointer; width: 100%; }
+.drop .files { display: flex; flex-direction: column; gap: 4px; position: relative; z-index: 1; pointer-events: none; }
+.file { font-size: 14px; font-weight: 600; display: flex; gap: 8px; align-items: baseline; overflow-wrap: anywhere; }
+.file small { font-weight: 400; color: var(--muted); }
+.pick { align-self: flex-start; position: relative; z-index: 0; border: 1px solid var(--ink); border-radius: 4px; padding: 5px 12px; font-size: 14px; font-weight: 600; pointer-events: none; }
+
+.notice { margin-top: 16px; padding: 10px 14px; border-radius: var(--radius); font-size: 14px; display: flex; gap: 10px; align-items: baseline; flex-wrap: wrap; }
+.notice.info { background: var(--warn-fill); color: var(--ink); }
+.notice.info b { color: var(--warn); }
+.notice.error { background: var(--flag-fill); }
+.notice.error b { color: var(--flag); }
+
+/* Supplier switcher */
+.suppliers { margin-top: 28px; display: flex; flex-wrap: wrap; gap: 8px; }
+.sup-tab { border: 1px solid var(--line); background: var(--surface); border-radius: var(--radius); padding: 10px 14px; text-align: left; cursor: pointer; display: flex; flex-direction: column; gap: 2px; min-width: 0; max-width: 100%; }
+.sup-tab[aria-selected="true"] { border-color: var(--ink); box-shadow: inset 0 -3px 0 var(--band); }
+.sup-tab .n { font-weight: 700; font-size: 14px; overflow-wrap: anywhere; }
+.sup-tab .s { font-size: 13px; color: var(--muted); }
+.pill { display: inline-block; font-size: 12px; font-weight: 700; padding: 1px 8px; border-radius: 999px; white-space: nowrap; }
+.pill.ok { background: var(--ok-fill); color: var(--ok-ink); }
+.pill.flag { background: var(--flag-fill); color: var(--flag); }
+.pill.warn { background: var(--warn-fill); color: var(--warn); }
+
+/* Supplier result */
+.result { margin-top: 16px; background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius); }
+.result-head { padding: 18px 20px; border-bottom: 1px solid var(--line); display: flex; flex-wrap: wrap; gap: 14px 24px; align-items: flex-end; justify-content: space-between; }
+.result-head h2 { font-size: 22px; font-weight: 600; overflow-wrap: anywhere; }
+.result-head .meta { color: var(--muted); font-size: 14px; margin-top: 2px; }
+.controls { display: flex; flex-wrap: wrap; gap: 10px; align-items: flex-end; }
+.controls label { display: flex; flex-direction: column; gap: 3px; font-size: 12px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.06em; color: var(--muted); }
+.controls select { text-transform: none; letter-spacing: 0; font-weight: 400; font-size: 14px; padding: 6px 8px; border: 1px solid var(--line); border-radius: 4px; background: var(--surface); max-width: 260px; }
+.btn { border: 0; background: var(--ink); color: var(--surface); padding: 8px 16px; border-radius: 4px; font-weight: 700; font-size: 14px; cursor: pointer; }
+.btn:disabled { opacity: .5; cursor: default; }
+
+.totals { display: grid; grid-template-columns: repeat(4, 1fr); border-bottom: 1px solid var(--line); }
+@media (max-width: 720px) { .totals { grid-template-columns: repeat(2, 1fr); } }
+.total { padding: 14px 20px; display: flex; flex-direction: column; gap: 2px; border-right: 1px solid var(--line); }
+.total:last-child { border-right: 0; }
+.total b { font-family: var(--display); font-size: 30px; font-weight: 800; line-height: 1.1; font-variant-numeric: tabular-nums; }
+.total span { font-size: 13px; color: var(--muted); }
+.total.flag b { color: var(--flag); }
+.total.ok b { color: var(--ok); }
+.total.warn b { color: var(--warn); }
+
+section.block { padding: 20px; border-bottom: 1px solid var(--line); display: flex; flex-direction: column; gap: 10px; }
+section.block:last-child { border-bottom: 0; }
+.block-head { display: flex; flex-wrap: wrap; gap: 4px 12px; align-items: baseline; }
+.block-head h3 { font-size: 18px; font-weight: 600; }
+.block-head p { margin: 0; color: var(--muted); font-size: 14px; max-width: 68ch; }
+.empty { color: var(--muted); font-size: 14px; margin: 0; }
+
+.table-wrap { overflow-x: auto; border: 1px solid var(--line); border-radius: 4px; }
+table { border-collapse: collapse; width: 100%; font-size: 14px; }
+th { text-align: left; font-size: 12px; text-transform: uppercase; letter-spacing: 0.06em; color: var(--muted); font-weight: 700; padding: 8px 12px; border-bottom: 1px solid var(--line); background: var(--bg); white-space: nowrap; }
+td { padding: 7px 12px; border-bottom: 1px solid var(--line); vertical-align: top; }
+tr:last-child td { border-bottom: 0; }
+td.desc { min-width: 220px; }
+tr.group td { background: var(--bg); font-weight: 700; font-size: 13px; }
+tr.matched td { background: var(--ok-fill); color: var(--ok-ink); font-weight: 600; }
+.hint { font-size: 13px; }
+.hint .code { font-weight: 500; }
+.hint em { font-style: normal; color: var(--muted); }
+
+/* Suggestions: plain text */
+.suggest { margin-top: 24px; background: var(--surface); border: 1px solid var(--line); border-left: 6px solid var(--band); border-radius: var(--radius); padding: 18px 20px; display: flex; flex-direction: column; gap: 18px; }
+.suggest .step { font-size: 12px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.08em; color: var(--muted); }
+.suggest h2 { font-size: 19px; font-weight: 600; }
+.sg-part { display: flex; flex-direction: column; gap: 6px; }
+.sg-part h3 { font-size: 16px; font-weight: 600; }
+.sg-note { margin: 0; color: var(--muted); font-size: 14px; max-width: 72ch; }
+.sg-list { margin: 4px 0 0; padding-left: 20px; display: flex; flex-direction: column; gap: 10px; max-width: 90ch; }
+.sg-list li { font-size: 14px; line-height: 1.55; }
+.sg-list .code { font-size: 13px; white-space: normal; overflow-wrap: anywhere; }
+
+/* Step 3: marked-up spreadsheets */
+.marked { margin-top: 24px; background: var(--surface); border: 2px solid var(--ink); border-radius: var(--radius); padding: 18px 20px; display: flex; flex-direction: column; gap: 14px; }
+.mk-head { display: flex; flex-wrap: wrap; gap: 12px 24px; align-items: flex-end; justify-content: space-between; }
+.mk-head .step { font-size: 12px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.08em; color: var(--muted); }
+.mk-head h2 { font-size: 19px; font-weight: 600; }
+.mk-head p { margin: 2px 0 0; color: var(--muted); font-size: 14px; max-width: 68ch; }
+.mk-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; }
+.mk-row { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 14px; padding-block: 10px; border-top: 1px solid var(--line); }
+.mk-name { flex: 1 1 260px; display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.mk-name .code { white-space: normal; overflow-wrap: anywhere; font-weight: 500; }
+.mk-name small { color: var(--muted); font-size: 13px; }
+.btn.ghost { background: transparent; color: var(--ink); border: 1px solid var(--ink); }
+
+details > summary { cursor: pointer; font-weight: 600; font-size: 14px; }
+details[open] > summary { margin-bottom: 10px; }
+.foot { margin-top: 20px; color: var(--muted); font-size: 13px; max-width: 72ch; }
+
+@media (prefers-reduced-motion: reduce) { * { transition: none !important; } }
+</style>
+</head>
+<body>
+
+
+<header class="band">
+  <div class="wrap">
+    <h1>Hire Check</h1>
+    <p>Supplier hire reports against the ACS on-hire report</p>
+  </div>
+  <div class="stripe" aria-hidden="true"></div>
+</header>
+
+<main class="wrap">
+  <div class="inputs">
+    <div class="drop" id="acsDrop">
+      <span class="step">Step 1</span>
+      <h2>ACS on-hire report</h2>
+      <p>One workbook, one sheet per job. Every sheet is checked.</p>
+      <div class="files" id="acsFiles"></div>
+      <span class="pick">Choose file</span>
+      <input type="file" id="acsInput" accept=".xlsx,.xlsm" aria-label="Choose the ACS on-hire report">
+    </div>
+    <div class="drop" id="supDrop">
+      <span class="step">Step 2</span>
+      <h2>Supplier hire reports</h2>
+      <p>One Excel file per supplier. Add as many as you like.</p>
+      <div class="files" id="supFiles"></div>
+      <span class="pick">Choose files</span>
+      <input type="file" id="supInput" accept=".xlsx,.xlsm" multiple aria-label="Choose supplier hire reports">
+    </div>
+  </div>
+
+  <div id="notices"></div>
+  <div id="suggest"></div>
+  <div id="marked"></div>
+  <div class="suppliers" id="tabs" role="tablist" aria-label="Supplier reports"></div>
+  <div id="result"></div>
+
+  <p class="foot">Files are read in your browser and are not uploaded anywhere. Plant codes are matched ignoring capitals and spaces. ACS cells listing several assets (A1459741 + A1156216) count each asset. Supplier copies: lines found on the ACS report in green and bold, with an added "ACS match" column giving the ACS sheet and cell. ACS copy: plant being charged (every asset on the line) in bold with a thick border, your colours kept. Suggestions are never marked. Old .xls files: open in Excel and Save As .xlsx first.</p>
+</main>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/exceljs/4.4.0/exceljs.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+<script>
+/*ENGINE*/
+</script>
+<script>
+/*APP*/
+</script>
+
+</body>
+</html>

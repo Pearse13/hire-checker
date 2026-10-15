@@ -6,11 +6,15 @@ Weekly check of what plant hire suppliers are charging ACS against the ACS on-hi
 
 `web/index.html`: open it, drop in the ACS on-hire report and the supplier hire reports. Files are read in the browser and never uploaded. It shows, for each supplier:
 
-- charged lines not on the ACS report (with a possible ACS match when the asset number looks swapped)
+- charged lines not on the ACS report
 - ACS plant from that supplier that isn't being charged
-- lines on both reports, grouped by job
+- lines on both reports, grouped by job, with the ACS cell each matched
 
-and downloads marked-up copies: matched lines in green and bold on each supplier report, and plant being charged in green and bold on the ACS report.
+Then, once everything is checked, suggestions in plain text: what each unknown plant code probably is on the ACS report (by on-hire date, rate, quantity and description), and where the ACS report's unpaired £0 items are on the supplier reports.
+
+It downloads marked-up copies: each supplier report with matched lines in green and bold plus an "ACS match" column, and the ACS report with plant being charged in bold with a thick border (its own colours kept).
+
+Edit `src/`, then run `python3 build.py` to rebuild `web/index.html`.
 
 ## Script
 
