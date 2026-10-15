@@ -9,9 +9,12 @@ Weekly check of what plant hire suppliers are charging ACS against the ACS in-ho
 3. For every line on each supplier report, look up its **plant code** on all sheets of the ACS report.
    - **Found**: highlight that supplier line green and make it bold, and give the ACS sheet and cell it matched (e.g. `M3 J9!C16`) in an added "ACS match" column.
    - **Not found**: notify me, with a suggestion of what it probably is on the ACS report. Do not mark it.
-4. After everything is checked, take the ACS report's £0 lines that nothing paired with and look for each one (e.g. a ladder) on the supplier reports.
+4. The other direction: ACS lines for that supplier that aren't on the supplier report (probably off-hired or swapped). The supplier's name on the ACS report (e.g. "Sunbelt") is worked out from which ACS lines its codes matched. Lines marked off-hire in the Status column are left out.
+5. After everything is checked, take the ACS report's £0 lines that nothing paired with and look for each one (e.g. a ladder) on the supplier reports.
 
-Always work from the files given for this check. Nothing about a particular week's report is built into the script or the web app.
+Always work from the files given for this check. Nothing about a particular week's report is built into the script or the web app, and there is no example data.
+
+Call the company **ACS** everywhere (pages, README, code, commits). Never "ACS Civils".
 
 Plant codes are identical in both reports (e.g. a 4.5m manhole box is `BHRAIL4.5` in both).
 
@@ -39,6 +42,8 @@ python hire_check.py <ACS_hire_report.xlsx> <supplier1.xlsx> [<supplier2.xlsx> .
   - Each charged line whose code isn't on the ACS report is compared with the ACS lines no supplier has charged for: on-hire date, rate (also rate × quantity for "2no" lines), quantity, description words and sizes (4m, 350mm, 8 CFM). A suggestion needs the description to agree plus the date or rate, or both date and rate. Sizes that disagree (4m vs 5m) rule a pair out.
   - **£0 end pass**: ACS lines at £0 (or blank rate) that are still unpaired are looked for among the supplier lines nothing else claimed. These need a shared description word (a ladder is a ladder).
   - Suggestions are text only. Nothing is marked for them.
+  - A charged line with no suggestion that went on hire after the ACS report's date (read from its filename, e.g. `01.09.26`) is flagged as probably new plant to add.
+- The "on ACS but not charged" list (point 4 above) is shown in the web app only. The script doesn't print it yet.
 
 ## Rules
 
@@ -61,7 +66,21 @@ Keep it short. For each supplier, give either "all on ACS report" or the list of
 
 ## Web app
 
-- https://hire-checker.vercel.app (GitHub: Pearse13/hire-checker; pushing to `main` redeploys it).
+- https://hire-checker.vercel.app: public, works on any device including phones, no login. Also published privately on claude.ai: https://claude.ai/artifact/2DR6XUR3QU2BZEJmDcWLpH (republish it after each change).
+- GitHub: Pearse13/hire-checker (public). Pushing to `main` redeploys the Vercel site in about a minute.
+- Files are read in the viewer's browser and never uploaded.
+
+### How the page should look and work
+- Yellow "HIRE CHECK" header with hazard stripe, then nothing else above the upload boxes: no intro text, no notes at the bottom of the page.
+- Starts empty. Before a check has run, the step 1 (ACS report) and step 2 (supplier reports) boxes sit in the middle of the screen, with their text and buttons centred. Once both are added they move to the top.
+- All buttons are solid blue with white text.
+- After a check: the **Suggestions** area (plain text: plant codes not on the ACS report, then the £0 end pass), then **Step 3: Marked-up spreadsheets** (ACS copy first, one download per supplier, plus "Download all"), then one tab per supplier with totals, "charged but not on ACS", "on ACS but not charged", "on both reports" (with the ACS cell) and the no-charge lines folded away.
+- Each supplier tab has a plant-code column picker, the web version of `--code-col`.
+- Downloads use Claude's download prompt on claude.ai and an ordinary browser download on the Vercel site.
+
+### Code
 - Source is `src/engine.js` (matching, suggestions, mark-up), `src/app.js` (screens) and `src/page.html`. Run `python3 build.py` to rebuild `web/index.html` after editing them. Never edit `web/index.html` by hand.
 - `hire_check.py` and `src/engine.js` must give the same answers. Change both together.
-- Spreadsheets are never committed or deployed (`.gitignore`, `.vercelignore`).
+- Spreadsheets are never committed or deployed (`.gitignore`, `.vercelignore`). They hold real supplier contacts and names.
+- The web app reads files with ExcelJS, which treats `<b val="0"/>` ("bold off") as bold. `cleanXlsx` in `src/engine.js` strips those before reading, or every unmatched supplier line comes out bold. Keep it.
+- To check the two versions agree, run both on the same files and compare the `_checked.xlsx` files cell by cell (values, bold, fill, borders).
