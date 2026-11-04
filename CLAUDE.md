@@ -7,7 +7,8 @@ Weekly check of what plant hire suppliers are charging ACS against the ACS in-ho
 1. **ACS in-house hire report**: one Excel workbook, one sheet per job (plus sheets like Yard and Vehicles). Rows are already colour-coded by me (green on hire, amber/red, key for off-hired and suspended): keep those colours.
 2. **Supplier hire reports**: one Excel file per supplier, showing what we're being charged for.
 3. For every line on each supplier report, look up its **plant code** on all sheets of the ACS report.
-   - **Found**: highlight that supplier line green and make it bold, and give the ACS sheet and cell it matched (e.g. `M3 J9!C16`) in an added "ACS match" column.
+   - **Found**: highlight that supplier line green and make it bold, and give the ACS sheet and cell it matched (e.g. `M3 J9!C16`) in an added "ACS match" column. The matching ACS line goes green and bold too.
+   - In the web app, nothing is marked until I approve it: I click through every pairing one at a time and approve or reject it.
    - **Not found**: notify me, with a suggestion of what it probably is on the ACS report. Do not mark it.
 4. The other direction: ACS lines for that supplier that aren't on the supplier report (probably off-hired or swapped). The supplier's name on the ACS report (e.g. "Sunbelt") is worked out from which ACS lines its codes matched. Lines marked off-hire in the Status column are left out.
 5. After everything is checked, take the ACS report's £0 lines that nothing paired with and look for each one (e.g. a ladder) on the supplier reports.
@@ -36,19 +37,20 @@ python hire_check.py <ACS_hire_report.xlsx> <supplier1.xlsx> [<supplier2.xlsx> .
 - Matching ignores capitals and spaces (`dump9t ` = `DUMP9T`).
 - Skips headers, blank rows, titles and total lines. Only single-word, code-like values count as charge lines.
 - Saves the marked-up copy as `<supplier>_checked.xlsx` next to the original: matched lines green + bold, plus an "ACS match" column after the last column giving every ACS sheet!cell the code appears in.
-- Also saves `<ACS report>_checked.xlsx`: every ACS plant line being charged on the supplier reports in **bold with a thick border** (only the report's own columns), keeping my existing colours. A line listing several assets is only marked when all of them are charged.
+- Also saves `<ACS report>_checked.xlsx`: every ACS plant line being charged on the supplier reports in **green fill + bold** (only the report's own columns). The green replaces that line's own colour; every other line keeps my colours. A line listing several assets is only marked when all of them are charged.
 - Prints the result on screen for each supplier: either OK with the match count, or every plant code NOT on the ACS report, with its row number and the full charged line, plus a grand total.
 - Then prints **suggestions**, worked out once every report is checked:
   - Each charged line whose code isn't on the ACS report is compared with the ACS lines no supplier has charged for: on-hire date, rate (also rate × quantity for "2no" lines), quantity, description words and sizes (4m, 350mm, 8 CFM). A suggestion needs the description to agree plus the date or rate, or both date and rate. Sizes that disagree (4m vs 5m) rule a pair out.
   - **£0 end pass**: ACS lines at £0 (or blank rate) that are still unpaired are looked for among the supplier lines nothing else claimed. These need a shared description word (a ladder is a ladder).
-  - Suggestions are text only. Nothing is marked for them.
+  - In the script, suggestions are text only and nothing is marked for them. In the web app, each suggestion with an ACS line is a pairing to approve, and is marked like a match once approved.
   - A charged line with no suggestion that went on hire after the ACS report's date (read from its filename, e.g. `01.09.26`) is flagged as probably new plant to add.
 - The "on ACS but not charged" list (point 4 above) is shown in the web app only. The script doesn't print it yet.
 
 ## Rules
 
 - **Never edit the original files.** Output is always a separate `_checked.xlsx` copy.
-- Supplier copies: **green fill + bold on matched lines** and the one added "ACS match" column. ACS copy: **bold + thick border** on charged lines, colours untouched. No new sheets, no red marking, no deleted rows, no other added columns.
+- Supplier copies: **green fill + bold on matched lines** and the one added "ACS match" column. ACS copy: **green fill + bold** on charged lines, every other line's colours untouched. No borders, no new sheets, no red marking, no deleted rows, no other added columns.
+- Web app: only **approved** pairings are marked, on both copies. Rejected and skipped ones are left alone.
 - Unmatched plant is **reported, not marked**.
 - Don't change the matching logic without asking me first.
 
@@ -72,9 +74,11 @@ Keep it short. For each supplier, give either "all on ACS report" or the list of
 
 ### How the page should look and work
 - Yellow "HIRE CHECK" header with hazard stripe, then nothing else above the upload boxes: no intro text, no notes at the bottom of the page.
-- Starts empty. Before a check has run, the step 1 (ACS report) and step 2 (supplier reports) boxes sit in the middle of the screen, with their text and buttons centred. Once both are added they move to the top.
+- Starts empty. Before a check has run, the step 1 (ACS report) and step 2 (supplier reports) boxes sit in the middle of the screen, with their text and buttons centred. Once both are added they move to the top and a **Run check** button appears. Nothing is checked until I press it. Adding another file hides the results until I press it again.
+- Keep the explanatory text short: one line at most per section.
 - All buttons are solid blue with white text.
-- After a check: the **Suggestions** area (plain text: plant codes not on the ACS report, then the £0 end pass), then **Step 3: Marked-up spreadsheets** (ACS copy first, one download per supplier, plus "Download all"), then one tab per supplier with totals, "charged but not on ACS", "on ACS but not charged", "on both reports" (with the ACS cell) and the no-charge lines folded away.
+- After a check: the **Suggestions** area (plain text: plant codes not on the ACS report, then the £0 end pass), then **Step 3: Check each pairing**, then **Step 4: Marked-up spreadsheets** (ACS copy first, one download per supplier, plus "Download all"), then one tab per supplier with totals, "charged but not on ACS", "on ACS but not charged", "on both reports" (with the ACS cell and my Approved / Rejected / Waiting check) and the no-charge lines folded away.
+- Step 3 shows one pairing at a time: the supplier line next to the ACS line, every plant-code match first, then the suggestions, then the £0 end pass finds (with why each was suggested). Approve, Reject, Skip, Back buttons, with keys A, R, → and ←. A progress count shows how many are checked. Under the card, a **Live mark-up** table shows the last few pairings answered as they now look on both copies (green and bold when approved). Decisions are kept in the browser per ACS report, so a reload doesn't lose them. Downloads only mark approved pairings, and both marked-up copies download by themselves once the last pairing is checked.
 - Each supplier tab has a plant-code column picker, the web version of `--code-col`.
 - Downloads use Claude's download prompt on claude.ai and an ordinary browser download on the Vercel site.
 

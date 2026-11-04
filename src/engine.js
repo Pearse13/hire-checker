@@ -318,11 +318,13 @@
   };
 
   // Supplier copy: matched lines green + bold, and an "ACS match" column naming the ACS sheet and cell.
-  function markWorkbook(wb, result) {
+  // marks: the supplier lines to mark ({sheet, row, acsAt}), every plant-code match unless given.
+  function markWorkbook(wb, result, marks) {
+    marks = marks || result.matched;
     for (const sh of result.sheets) {
       const ws = wb.getWorksheet(sh.title);
       if (!ws) continue;
-      const lines = result.matched.filter(m => m.sheet === sh.title);
+      const lines = marks.filter(m => m.sheet === sh.title);
       const extra = sh.width + 1;
       if (sh.headerRow) {
         const h = ws.getRow(sh.headerRow).getCell(extra);
@@ -344,21 +346,47 @@
     return acs.items.filter(i => i.codes.every(c => charged.has(c)));
   }
 
-  // ACS copy: charged lines bold with a thick border round the line. Existing colours are kept.
+  // ACS copy: charged lines green + bold across the report's own columns. Other lines keep their colours.
   function markACS(wb, lines) {
-    const thick = { style: "thick", color: { argb: "FF000000" } };
     for (const l of lines) {
       const ws = wb.getWorksheet(l.sheet);
       if (!ws) continue;
       const row = ws.getRow(l.row);
-      for (let c = 1; c <= l.width; c++) {
-        restyle(row.getCell(c), s => ({
-          font: Object.assign({}, s.font, { bold: true }),
-          border: Object.assign({}, s.border, { top: thick, bottom: thick },
-            c === 1 ? { left: thick } : {}, c === l.width ? { right: thick } : {}),
-        }));
-      }
+      for (let c = 1; c <= l.width; c++) restyle(row.getCell(c), s => ({ fill: GREEN, font: Object.assign({}, s.font, { bold: true }) }));
     }
+  }
+
+  // ---------- pairings to approve one at a time (web app) ----------
+  // Every plant-code match, then every suggestion with an ACS line, then the £0 end pass finds.
+  // Each pairing is one supplier line and the ACS line(s) it pairs with.
+  function pairings(acs, results, cross) {
+    const key = (f, cells) => `${f.supplier}|${f.sheet}|${f.row}|${cells.join(";")}`;
+    const out = [];
+    for (const r of results) for (const m of r.matched) {
+      const items = acs.items.filter(i => i.codes.includes(m.code));
+      out.push({ id: key(m, m.acsAt), kind: "match", line: m, items, acsAt: m.acsAt, code: m.code, reasons: [] });
+    }
+    if (cross) {
+      for (const g of cross.suggestions) if (g.acs)
+        out.push({ id: key(g.line, [g.acs.cell]), kind: "suggest", line: g.line, items: [g.acs], acsAt: [g.acs.cell], reasons: g.reasons });
+      for (const z of cross.zeroPass) if (z.line)
+        out.push({ id: key(z.line, [z.acs.cell]), kind: "zero", line: z.line, items: [z.acs], acsAt: [z.acs.cell], reasons: z.reasons });
+    }
+    return out;
+  }
+
+  // ACS lines covered by approved pairings. A line listing several assets needs every one of them covered:
+  // by an approved plant-code match on that asset, or by an approved suggestion standing in for one.
+  function acsApprovedLines(acs, approved) {
+    const byCode = new Set(), stand = new Map();
+    for (const p of approved) {
+      if (p.kind === "match") byCode.add(p.code);
+      else stand.set(p.items[0].cell, (stand.get(p.items[0].cell) || 0) + 1);
+    }
+    return acs.items.filter(i => {
+      const left = i.codes.filter(c => !byCode.has(c)).length;
+      return left <= (stand.get(i.cell) || 0) && (left < i.codes.length || stand.has(i.cell));
+    });
   }
 
   // ExcelJS reads <b val="0"/> ("bold off") as bold, so a plain open and save can turn whole sheets bold.
@@ -374,7 +402,7 @@
     return zip.generateAsync({ type: "arraybuffer" });
   }
 
-  const api = { cleanXlsx, crossCheck, acsChargedLines, markACS, markWorkbook, plain, norm, looksLikeCode, cellCodes,
+  const api = { cleanXlsx, crossCheck, acsChargedLines, acsApprovedLines, pairings, markACS, markWorkbook, plain, norm, looksLikeCode, cellCodes,
     readACS, checkSupplier, colLetter, colIndex, words, measures, qtyFrom, money };
   if (typeof module !== "undefined" && module.exports) module.exports = api; else root.HireEngine = api;
 })(typeof globalThis !== "undefined" ? globalThis : this);

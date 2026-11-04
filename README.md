@@ -12,7 +12,7 @@ Weekly check of what plant hire suppliers are charging ACS against the ACS on-hi
 
 Then, once everything is checked, suggestions in plain text: what each unknown plant code probably is on the ACS report (by on-hire date, rate, quantity and description), and where the ACS report's unpaired £0 items are on the supplier reports.
 
-It downloads marked-up copies: each supplier report with matched lines in green and bold plus an "ACS match" column, and the ACS report with plant being charged in bold with a thick border (its own colours kept).
+Then you check each pairing one at a time (every plant-code match, plus each suggestion that has an ACS line) and approve or reject it. It downloads marked-up copies where only the approved pairings are marked: green and bold on both the supplier report (plus an "ACS match" column) and the ACS report.
 
 Edit `src/`, then run `python3 build.py` to rebuild `web/index.html`.
 
@@ -23,4 +23,4 @@ pip3 install openpyxl
 python3 hire_check.py <ACS_hire_report.xlsx> <supplier1.xlsx> [<supplier2.xlsx> ...] [--code-col C]
 ```
 
-Writes `<file>_checked.xlsx` copies next to the originals and prints every plant code not on the ACS report. See `CLAUDE.md` for the full rules.
+Writes `<file>_checked.xlsx` copies next to the originals and prints every plant code not on the ACS report. The script marks every plant-code match without asking; approving pairings one by one is in the web app only. See `CLAUDE.md` for the full rules.

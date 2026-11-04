@@ -3,7 +3,7 @@
   const $ = (id) => document.getElementById(id);
   const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
 
-  const state = { acs: null, suppliers: [], active: 0, errors: [], cross: null, suggestFor: new Map() };
+  const state = { acs: null, suppliers: [], active: 0, errors: [], cross: null, suggestFor: new Map(), queue: [], pos: 0, decisions: new Map(), ran: false, history: [] };
   let downloads = null;
 
   // ---------- formatting ----------
@@ -31,6 +31,11 @@
     return { buf, book: { name: file.name, sheets } };
   }
 
+  // New files mean a new check: nothing shows until Run check is pressed
+  const ready = () => state.ran && state.acs && state.suppliers.length;
+  function notRun() { state.ran = false; state.cross = null; state.queue = []; state.history = []; }
+  function runCheck() { rerun(); state.ran = true; state.history = []; state.focusReview = true; render(); }
+
   function rerun() {
     state.acsSave = null;
     for (const s of state.suppliers) s.saveState = null, s.result = E.checkSupplier(s.book, state.acs, s.override || null);
@@ -40,6 +45,46 @@
   function crossCheck() {
     state.cross = state.acs && state.suppliers.length ? E.crossCheck(state.acs, state.suppliers.map((s) => s.result)) : null;
     state.suggestFor = new Map(state.cross ? state.cross.suggestions.map((g) => [g.line, g]) : []);
+    state.queue = state.cross ? E.pairings(state.acs, state.suppliers.map((s) => s.result), state.cross) : [];
+    state.decisions = loadDecisions();
+    state.pos = nextWaiting(0);
+  }
+
+  // ---------- approving pairings ----------
+  // Decisions are kept in this browser per ACS report, so a reload doesn't lose the clicking done so far.
+  const storeKey = () => "hirecheck:" + state.acs.name;
+  function loadDecisions() {
+    try { return new Map(Object.entries(JSON.parse(localStorage.getItem(storeKey()) || "{}"))); } catch (e) { return new Map(); }
+  }
+  function saveDecisions() {
+    try { localStorage.setItem(storeKey(), JSON.stringify(Object.fromEntries(state.decisions))); } catch (e) { /* not kept */ }
+  }
+  const decisionOf = (p) => state.decisions.get(p.id) || null;
+  const approved = () => state.queue.filter((p) => decisionOf(p) === "approved");
+  // First pairing at or after i still waiting for an answer, or the end of the queue
+  function nextWaiting(i) {
+    for (let j = i; j < state.queue.length; j++) if (!decisionOf(state.queue[j])) return j;
+    return state.queue.length;
+  }
+  function decide(v) {
+    const p = state.queue[state.pos];
+    if (!p) return;
+    const wasDone = state.queue.every(decisionOf);
+    state.decisions.set(p.id, v);
+    state.history = [p, ...state.history.filter((h) => h !== p)].slice(0, 4);
+    saveDecisions();
+    state.acsSave = null; for (const s of state.suppliers) s.saveState = null;
+    state.pos = nextWaiting(state.pos + 1);
+    if (state.pos >= state.queue.length) state.pos = Math.min(nextWaiting(0), state.queue.length);
+    state.focusReview = true;
+    render();
+    // Last pairing checked: download both marked-up copies straight away
+    if (!wasDone && state.queue.every(decisionOf)) saveAll();
+  }
+  function move(by) {
+    state.pos = Math.max(0, Math.min(state.queue.length, state.pos + by));
+    state.focusReview = true;
+    render();
   }
 
   async function addACS(file) {
@@ -48,7 +93,7 @@
       const { book, buf } = await readBook(file);
       state.acsSave = null;
       state.acs = { name: file.name, buf, sheetNames: book.sheets.map((s) => s.title), reportDate: reportDate(file.name), ...E.readACS(book) };
-      rerun();
+      notRun();
     } catch (e) { state.errors.push(e.message); }
     render();
   }
@@ -65,7 +110,7 @@
         state.active = existing >= 0 ? existing : state.suppliers.length - 1;
       } catch (e) { state.errors.push(e.message); }
     }
-    if (state.acs) rerun();
+    notRun();
     render();
   }
 
@@ -73,13 +118,15 @@
   async function buildChecked(s) {
     const wb = new ExcelJS.Workbook();
     await wb.xlsx.load(s.buf.slice(0));
-    E.markWorkbook(wb, s.result);
+    E.markWorkbook(wb, s.result, supplierMarks(s));
     const out = await wb.xlsx.writeBuffer();
     return new Blob([out], { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" });
   }
   const checkedName = (s) => s.name.replace(/\.xlsx?m?$/i, "") + "_checked.xlsx";
 
-  const acsLines = () => E.acsChargedLines(state.acs, state.suppliers.map((s) => s.result));
+  // Only approved pairings are marked: the supplier line gets the ACS cell(s) it was paired with
+  const supplierMarks = (s) => approved().filter((p) => p.line.supplier === s.name).map((p) => ({ sheet: p.line.sheet, row: p.line.row, acsAt: p.acsAt }));
+  const acsLines = () => E.acsApprovedLines(state.acs, approved());
   async function buildACS() {
     const wb = new ExcelJS.Workbook();
     await wb.xlsx.load(state.acs.buf.slice(0));
@@ -129,9 +176,9 @@
 
   function renderNotices() {
     const parts = [];
-    if (!state.acs && !state.suppliers.length) parts.push(`<div class="notice info"><b>Nothing checked yet.</b> Add this week's ACS on-hire report in step 1 and the supplier hire reports in step 2. The check runs on the files you add, every time.</div>`);
-    else if (!state.acs) parts.push(`<div class="notice info"><b>Add the ACS on-hire report</b> in step 1 to check ${state.suppliers.length ? "these supplier reports" : "supplier reports"} against it.</div>`);
-    else if (!state.suppliers.length) parts.push(`<div class="notice info"><b>Add supplier hire reports</b> in step 2. ${state.acs.codes.size} plant codes found across ${plural(state.acs.sheetNames.length, "job sheet")}.</div>`);
+    if (!state.acs && !state.suppliers.length) parts.push(`<div class="notice info"><b>Add this week's reports</b> in steps 1 and 2.</div>`);
+    else if (!state.acs) parts.push(`<div class="notice info"><b>Add the ACS on-hire report</b> in step 1.</div>`);
+    else if (!state.suppliers.length) parts.push(`<div class="notice info"><b>Add supplier hire reports</b> in step 2.</div>`);
     for (const e of state.errors) parts.push(`<div class="notice error"><b>Not added.</b> ${esc(e)}</div>`);
     $("notices").innerHTML = parts.join("");
   }
@@ -143,7 +190,7 @@
 
   function renderTabs() {
     const tabs = $("tabs");
-    if (!state.acs || !state.suppliers.length) { tabs.innerHTML = ""; return; }
+    if (!ready()) { tabs.innerHTML = ""; return; }
     tabs.innerHTML = state.suppliers.map((s, i) => {
       const c = counts(s.result);
       const status = c.charged ? `<span class="pill flag">${plural(c.charged, "charge")} not on ACS</span>` : `<span class="pill ok">All charges on ACS</span>`;
@@ -167,7 +214,7 @@
 
   function renderResult() {
     const box = $("result");
-    if (!state.acs || !state.suppliers.length) { box.innerHTML = ""; return; }
+    if (!ready()) { box.innerHTML = ""; return; }
     const s = state.suppliers[state.active];
     const r = s.result, c = counts(r);
     const charged = r.flagged.filter((f) => f.charged), free = r.flagged.filter((f) => !f.charged);
@@ -191,8 +238,8 @@
     for (const m of r.matched) { const k = m.jobs.join(", "); if (!byJob.has(k)) byJob.set(k, []); byJob.get(k).push(m); }
     const jobs = [...byJob.entries()].sort((a, b) => b[1].length - a[1].length);
     const matchedTable = r.matched.length ? `<div class="table-wrap"><table>
-      <thead><tr><th>Row</th><th>Plant code</th><th>Plant</th><th>On hire</th><th class="num">Rate</th><th>ACS cell</th></tr></thead>
-      <tbody>${jobs.map(([job, ms]) => `<tr class="group"><td colspan="6">${esc(job)} · ${ms.length}</td></tr>` + ms.map((m) => `<tr class="matched"><td class="num">${m.row}</td><td class="code">${esc(m.raw)}</td><td class="desc">${esc(m.desc)}</td><td class="num">${fmtDate(m.date)}</td><td class="num">${fmtRate(m.rate)}</td><td class="code">${m.acsAt.map(esc).join("<br>")}</td></tr>`).join("")).join("")}</tbody></table></div>`
+      <thead><tr><th>Row</th><th>Plant code</th><th>Plant</th><th>On hire</th><th class="num">Rate</th><th>ACS cell</th><th>Your check</th></tr></thead>
+      <tbody>${jobs.map(([job, ms]) => `<tr class="group"><td colspan="7">${esc(job)} · ${ms.length}</td></tr>` + ms.map((m) => { const d = lineDecision(m); return `<tr class="${d === "approved" ? "matched" : ""}"><td class="num">${m.row}</td><td class="code">${esc(m.raw)}</td><td class="desc">${esc(m.desc)}</td><td class="num">${fmtDate(m.date)}</td><td class="num">${fmtRate(m.rate)}</td><td class="code">${m.acsAt.map(esc).join("<br>")}</td><td>${decisionPill(d)}</td></tr>`; }).join("")).join("")}</tbody></table></div>`
       : `<p class="empty">No lines on this report match the ACS report. Check the plant code column above.</p>`;
 
     const freeTable = free.length ? `<details><summary>${plural(free.length, "line")} not on the ACS report with no charge (accessories, notes)</summary><div class="table-wrap"><table>
@@ -213,15 +260,15 @@
         <div class="total"><b>${c.free}</b><span>no-charge lines not on ACS</span></div>
       </div>
       <section class="block">
-        <div class="block-head"><h3>Charged but not on the ACS report</h3><p>Lines with a rate whose plant code is on none of the ACS job sheets. The possible match comes from the Suggestions above.</p></div>
+        <div class="block-head"><h3>Charged but not on the ACS report</h3><p>Plant codes on no ACS job sheet.</p></div>
         ${flaggedTable}
       </section>
       <section class="block">
-        <div class="block-head"><h3>On the ACS report but not charged</h3><p>${r.company ? `Plant listed under ${esc(r.company)} on the ACS report that isn't on this supplier report. Probably off-hired, or swapped for another unit.` : ""}</p></div>
+        <div class="block-head"><h3>On the ACS report but not charged</h3><p>${r.company ? "Probably off-hired or swapped." : ""}</p></div>
         ${notChargedTable}
       </section>
       <section class="block">
-        <div class="block-head"><h3>On both reports</h3><p>Grouped by ACS job sheet. These lines are green and bold in the marked-up spreadsheet, with the ACS cell in a new "ACS match" column.</p></div>
+        <div class="block-head"><h3>On both reports</h3><p>Grouped by ACS job sheet.</p></div>
         ${matchedTable}
       </section>
       ${free.length ? `<section class="block">${freeTable}</section>` : ""}
@@ -232,20 +279,21 @@
 
   function renderMarked() {
     const box = $("marked");
-    const real = state.acs && state.suppliers.length;
+    const real = ready();
     if (!real) { box.innerHTML = ""; return; }
     const label = { saving: "Saving…", saved: "Saved", declined: "Not saved", failed: "Not saved" };
     const pill = (st) => st ? `<span class="pill ${st === "saved" ? "ok" : st === "saving" ? "warn" : "flag"}">${label[st]}</span>` : "";
     const lines = acsLines(), acsTotal = state.acs.items.length;
+    const waiting = state.queue.filter((p) => !decisionOf(p)).length;
     const acsRow = `<li class="mk-row">
-        <span class="mk-name"><span class="code">${esc(checkedName(state.acs))}</span><small>ACS report · ${plural(lines.length, "line")} charged on the supplier reports in bold with a thick border, your colours kept · ${acsTotal - lines.length} of ${acsTotal} plant lines left unmarked</small></span>
+        <span class="mk-name"><span class="code">${esc(checkedName(state.acs))}</span><small>ACS report · ${plural(lines.length, "line")} marked</small></span>
         ${pill(state.acsSave)}
         <button class="btn ghost" data-save="acs" ${!downloads || state.acsSave === "saving" ? "disabled" : ""}>${state.acsSave === "saved" ? "Save again" : "Download"}</button>
       </li>`;
     const rows = acsRow + state.suppliers.map((s, i) => {
-      const c = counts(s.result);
+      const n = supplierMarks(s).length, total = s.result.matched.length + s.result.flagged.length;
       return `<li class="mk-row">
-        <span class="mk-name"><span class="code">${esc(checkedName(s))}</span><small>${plural(c.matched, "line")} green and bold with their ACS cell in an "ACS match" column · ${c.charged + c.free} not on ACS left unmarked</small></span>
+        <span class="mk-name"><span class="code">${esc(checkedName(s))}</span><small>${plural(n, "line")} marked</small></span>
         ${pill(s.saveState)}
         <button class="btn ghost" data-save="${i}" ${!downloads || s.saveState === "saving" ? "disabled" : ""}>${s.saveState === "saved" ? "Save again" : "Download"}</button>
       </li>`;
@@ -253,8 +301,8 @@
     const pending = state.acsSave === "saving" || state.suppliers.some((s) => s.saveState === "saving");
     box.innerHTML = `<section class="marked">
       <div class="mk-head">
-        <div><span class="step">Step 3</span><h2>Marked-up spreadsheets</h2>
-        <p>The ACS report with plant that suppliers are charging for in bold with a thick border, keeping your own colours. Each supplier report with lines found on the ACS report in green and bold, plus the ACS sheet and cell each one matched. Your original files are not changed.</p></div>
+        <div><span class="step">Step 4</span><h2>Marked-up spreadsheets</h2>
+        <p>${waiting ? `<b>${plural(waiting, "pairing")} still to check.</b> ` : ""}Downloads by themselves once every pairing is checked.</p></div>
         <button class="btn" id="saveAll" ${!downloads || pending ? "disabled" : ""}>Download all (${state.suppliers.length + 1})</button>
       </div>
       <ul class="mk-list">${rows}</ul>
@@ -284,9 +332,9 @@
     const unknown = suggestions.map((g) => {
       const f = g.line;
       const what = `<b>${esc(supplierLabel(f.supplier))}row ${f.row}: <span class="code">${esc(f.raw)}</span> ${esc(f.desc)}</b>, ${money(f.rate)}${f.date ? `, on hire ${fmtDate(f.date)}` : ""}.`;
-      if (!g.acs) return `<li>${what} No likely ACS line found.${afterReport(f) ? " It went on hire after the ACS report date, so it may be new plant to add to the ACS report." : " Check whether it should be on the ACS report."}</li>`;
+      if (!g.acs) return `<li>${what} No likely ACS line.${afterReport(f) ? " On hire after the ACS report date: probably new plant." : ""}</li>`;
       const a = g.acs;
-      return `<li>${what} Probably the ACS line at <span class="code">${esc(a.cell)}</span>: ${esc(a.desc)}, asset <span class="code">${esc(a.free.join(", "))}</span>, ${money(a.rate)}${a.offHire ? ", marked off-hire on the ACS report" : ""}. Reason: ${esc(sentence(g.reasons))}. If it's the same plant, update the asset number on the ACS report.</li>`;
+      return `<li>${what} Probably <span class="code">${esc(a.cell)}</span> ${esc(a.desc)} (asset <span class="code">${esc(a.free.join(", "))}</span>, ${money(a.rate)}${a.offHire ? ", off-hire" : ""}): ${esc(sentence(g.reasons))}.</li>`;
     }).join("");
 
     const zero = zeroPass.map((z) => {
@@ -299,17 +347,95 @@
 
     box.innerHTML = `<section class="suggest">
       <div><span class="step">Suggestions</span><h2>Plant that needs a second look</h2>
-      <p class="sg-note">Worked out after every report was checked. These are suggestions only, and nothing here is marked in the spreadsheets.</p></div>
+</div>
       <div class="sg-part"><h3>Plant codes not on the ACS report</h3>
-        <p class="sg-note">Each charged line whose plant code isn't on the ACS report, compared with the ACS lines no supplier has charged for, by on-hire date, rate, quantity and description.</p>
         ${unknown ? `<ul class="sg-list">${unknown}</ul>` : `<p class="empty">Every charged plant code is on the ACS report.</p>`}</div>
       <div class="sg-part"><h3>£0 items on the ACS report</h3>
-        <p class="sg-note">Checked last: ACS lines at £0 that nothing else paired with, looked for on the supplier reports.</p>
         ${zero ? `<ul class="sg-list">${zero}</ul>` : `<p class="empty">No unpaired £0 items on the ACS report.</p>`}</div>
     </section>`;
   }
 
-  function render() { document.body.classList.toggle("empty", !(state.acs && state.suppliers.length)); renderFiles(); renderNotices(); renderSuggestions(); renderMarked(); renderTabs(); renderResult(); }
+  // ---------- step 3: one pairing at a time ----------
+  const KIND = { match: "Same plant code on both", suggest: "Suggested: plant code not on the ACS report", zero: "£0 end pass: £0 ACS line found on a supplier report" };
+  const lineDecision = (m) => { const p = state.queue.find((q) => q.line === m); return p ? decisionOf(p) : null; };
+  const decisionPill = (d) => d === "approved" ? `<span class="pill ok">Approved</span>` : d === "rejected" ? `<span class="pill flag">Rejected</span>` : `<span class="pill warn">Waiting</span>`;
+  const field = (k, v) => v ? `<div class="rv-f"><dt>${k}</dt><dd>${v}</dd></div>` : "";
+
+  // Live mark-up: the last pairings you answered, shown as they now look on the two copies
+  function liveView() {
+    if (!state.history.length) return "";
+    const rows = state.history.map((p) => {
+      const d = decisionOf(p), f = p.line, cls = d === "approved" ? "lv-on" : "";
+      const a = p.items[0];
+      return `<tr class="${cls}"><td>Supplier<br>${decisionPill(d)}</td><td class="code">row ${f.row}</td><td class="code">${esc(f.raw)}</td><td>${esc(f.desc)}</td></tr>
+        <tr class="${cls} lv-acs"><td>ACS</td><td class="code">${esc(a ? a.cell : p.acsAt[0])}</td><td class="code">${esc(a ? a.assetText : f.raw)}</td><td>${esc(a ? a.desc : "")}</td></tr>`;
+    }).join("");
+    return `<div class="live"><h3>Live mark-up</h3><div class="table-wrap"><table><tbody>${rows}</tbody></table></div></div>`;
+  }
+
+  function renderReview() {
+    const box = $("review");
+    if (!state.cross) { box.innerHTML = ""; return; }
+    const q = state.queue, n = q.length;
+    const done = q.filter((p) => decisionOf(p)).length;
+    const yes = approved().length, no = done - yes;
+    const head = `<div class="rv-head"><div><span class="step">Step 3</span><h2>Check each pairing</h2>
+      <p class="sg-note">Approved lines go green and bold on both reports.</p></div>
+      <div class="rv-count"><b>${done}</b> of ${n} checked · ${yes} approved · ${no} rejected</div></div>
+      <div class="rv-bar" aria-hidden="true"><span style="width:${n ? (100 * done / n) : 0}%"></span></div>`;
+
+    if (!n) { box.innerHTML = `<section class="review">${head}<p class="empty">No pairings found between the supplier reports and the ACS report.</p></section>`; return; }
+
+    if (state.pos >= n) {
+      const first = nextWaiting(0);
+      box.innerHTML = `<section class="review">${head}
+        <div class="rv-done"><p>${done === n ? `<b>Every pairing is checked.</b> The marked-up copies are in step 4.` : `<b>${plural(n - done, "pairing")} skipped</b>, not marked.`}</p>
+        <div class="rv-actions">${first < n ? `<button class="btn" id="rvFirst">Go to the first waiting one</button>` : ""}<button class="btn" id="rvAgain">Go through again</button></div></div>${liveView()}</section>`;
+      if ($("rvFirst")) $("rvFirst").addEventListener("click", () => { state.pos = first; state.focusReview = true; render(); });
+      $("rvAgain").addEventListener("click", () => { state.pos = 0; state.focusReview = true; render(); });
+      return;
+    }
+
+    const p = q[state.pos], f = p.line, d = decisionOf(p);
+    const sup = `<div class="rv-side"><h3>Supplier report</h3><p class="rv-src">${esc(f.supplier)} · ${esc(f.sheet)} row ${f.row}</p><dl>
+      ${field("Plant code", `<span class="code">${esc(f.raw)}</span>`)}${field("Plant", esc(f.desc))}
+      ${field("On hire", fmtDate(f.date))}${field("Rate", fmtRate(f.rate))}${f.qty > 1 ? field("Quantity", f.qty) : ""}</dl></div>`;
+    const acsItem = (a) => `<dl>${field("ACS cell", `<span class="code">${esc(a.cell)}</span>`)}${field("Job sheet", esc(a.sheet))}
+      ${field("Asset no.", `<span class="code">${esc(a.assetText)}</span>`)}${field("Plant", esc(a.desc))}${field("Supplier", esc(a.company))}
+      ${field("On hire", fmtDate(a.date))}${field("ACS rate", a.zero ? "£0" : fmtRate(a.rate))}${a.offHire ? field("Status", "Off-hire") : ""}</dl>`;
+    const acs = `<div class="rv-side"><h3>ACS report</h3><p class="rv-src">${esc(state.acs.name)}</p>
+      ${p.items.length ? p.items.map(acsItem).join("") : `<dl>${field("Found at", p.acsAt.map((c) => `<span class="code">${esc(c)}</span>`).join("<br>"))}</dl>`}</div>`;
+
+    box.innerHTML = `<section class="review">${head}
+      <div class="rv-card">
+        <div class="rv-top"><span class="rv-kind ${p.kind}">${KIND[p.kind]}</span><span class="rv-pos">Pairing ${state.pos + 1} of ${n} ${d ? decisionPill(d) : ""}</span></div>
+        <div class="rv-pair">${sup}${acs}</div>
+        ${p.reasons.length ? `<p class="rv-why"><b>Why it's suggested:</b> ${esc(sentence(p.reasons))}.</p>` : ""}
+        <div class="rv-actions">
+          <button class="btn" id="rvYes">Approve</button>
+          <button class="btn" id="rvNo">Reject</button>
+          <button class="btn" id="rvSkip">Skip</button>
+          <button class="btn" id="rvBack" ${state.pos ? "" : "disabled"}>Back</button>
+          <span class="rv-keys">Keys: A approve · R reject · → skip · ← back</span>
+        </div>
+      </div>${liveView()}</section>`;
+    $("rvYes").addEventListener("click", () => decide("approved"));
+    $("rvNo").addEventListener("click", () => decide("rejected"));
+    $("rvSkip").addEventListener("click", () => move(1));
+    $("rvBack").addEventListener("click", () => move(-1));
+  }
+
+  function render() {
+    document.body.classList.toggle("empty", !(state.acs && state.suppliers.length));
+    $("runBox").innerHTML = state.acs && state.suppliers.length && !state.ran ? `<button class="btn run" id="runCheck">Run check</button>` : "";
+    if ($("runCheck")) $("runCheck").addEventListener("click", runCheck);
+    renderFiles(); renderNotices(); renderSuggestions(); renderReview(); renderMarked(); renderTabs(); renderResult();
+    if (state.focusReview) {
+      state.focusReview = false;
+      const b = $("rvYes") || $("rvFirst") || $("rvAgain");
+      if (b) b.focus({ preventScroll: true });
+    }
+  }
 
   // ACS report date from its filename (e.g. "01.09.26"), used to explain recent hires
   function reportDate(name) {
@@ -329,6 +455,16 @@
   }
   wireDrop("acsDrop", "acsInput", (files) => addACS(files[0]));
   wireDrop("supDrop", "supInput", (files) => addSuppliers(files));
+  document.addEventListener("keydown", (e) => {
+    if (!state.cross || !state.queue.length || e.ctrlKey || e.metaKey || e.altKey || /^(INPUT|SELECT|TEXTAREA)$/.test(e.target.tagName)) return;
+    const k = e.key.toLowerCase();
+    if (k === "a" && state.pos < state.queue.length) decide("approved");
+    else if (k === "r" && state.pos < state.queue.length) decide("rejected");
+    else if (k === "arrowright" && state.pos < state.queue.length) move(1);
+    else if (k === "arrowleft" && state.pos > 0) move(-1);
+    else return;
+    e.preventDefault();
+  });
 
   render();
 
