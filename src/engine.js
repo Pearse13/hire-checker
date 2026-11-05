@@ -368,14 +368,25 @@
       if (!p) { p = { kind: "match", line: m, lines: [], items: [a], acsAt: [a.cell], codes: [], stand: [], reasons: [] }; grouped.set(a.cell, p); out.push(p); }
       return p;
     };
-    for (const r of results) for (const m of r.matched) {
+    for (const r of results) {
+    // The same code on several supplier lines (a hose charged in parts): one pairing, costs added up
+    const times = new Map();
+    for (const m of r.matched) times.set(m.code, (times.get(m.code) || 0) + 1);
+    for (const m of r.matched) {
       const items = acs.items.filter(i => i.codes.includes(m.code));
       const multi = items.filter(i => i.codes.length > 1);
+      if (!multi.length && times.get(m.code) > 1) {
+        const k = `${r.name}|${m.code}`;
+        let p = grouped.get(k);
+        if (!p) { p = { kind: "match", line: m, lines: [], items, acsAt: m.acsAt, codes: [m.code], stand: [], reasons: [] }; grouped.set(k, p); out.push(p); }
+        p.lines.push(m); continue;
+      }
       if (!multi.length) { out.push({ id: key([m], m.acsAt), kind: "match", line: m, lines: [m], items, acsAt: m.acsAt, codes: [m.code], stand: [], reasons: [] }); continue; }
       // A code on several such lines (a charger in each radio set): one supplier line per ACS line, in order
       const a = multi.find(i => !(grouped.get(i.cell) || { codes: [] }).codes.includes(m.code)) || multi[0];
       const p = group(a, m);
       p.lines.push(m); p.codes.push(m.code);
+    }
     }
     if (cross) {
       for (const g of cross.suggestions) if (g.acs) {
