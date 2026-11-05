@@ -25,7 +25,7 @@ warnings.filterwarnings("ignore")
 
 GREEN = PatternFill("solid", start_color="C6EFCE", end_color="C6EFCE")
 NOT_CODES = {"CODE", "PLANTCODE", "PLANT", "ITEM", "ITEMCODE", "PRODUCT", "PRODUCTCODE",
-             "REF", "REFERENCE", "STOCK", "STOCKCODE", "DESCRIPTION", "QTY", "QUANTITY", "DAYS", "RATE", "CHARGE", "AMOUNT", "TOTAL", "SUBTOTAL", "VAT", "NET", "GROSS"}
+             "NO", "NO.", "REF", "REFERENCE", "STOCK", "STOCKCODE", "DESCRIPTION", "QTY", "QUANTITY", "DAYS", "RATE", "CHARGE", "AMOUNT", "TOTAL", "SUBTOTAL", "VAT", "NET", "GROSS"}
 STOP = {"the", "and", "with", "for", "inc", "incl", "including", "donotuse", "set", "per", "week", "day",
         "standard", "heavy", "duty", "unit", "type", "new", "only", "from", "use"}
 SPLIT = r"[+,;&]"
@@ -67,7 +67,8 @@ def day_key(v):
         return v.date().isoformat()
     if isinstance(v, date):
         return v.isoformat()
-    return None
+    m = re.fullmatch(r"\s*(\d{1,2})/(\d{1,2})/(\d{4})\s*", v) if isinstance(v, str) else None
+    return f"{m[3]}-{int(m[2]):02d}-{int(m[1]):02d}" if m else None
 
 
 def text(v):

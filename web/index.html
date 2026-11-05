@@ -278,7 +278,7 @@ details[open] > summary { margin-bottom: 10px; }
 // Hire check engine: same matching rules as hire_check.py, plus the two-way report and suggestions.
 (function (root) {
   const NOT_CODES = new Set(["CODE", "PLANTCODE", "PLANT", "ITEM", "ITEMCODE", "PRODUCT", "PRODUCTCODE",
-    "REF", "REFERENCE", "STOCK", "STOCKCODE", "DESCRIPTION", "QTY", "QUANTITY", "DAYS", "RATE", "CHARGE",
+    "NO", "NO.", "REF", "REFERENCE", "STOCK", "STOCKCODE", "DESCRIPTION", "QTY", "QUANTITY", "DAYS", "RATE", "CHARGE",
     "AMOUNT", "TOTAL", "SUBTOTAL", "VAT", "NET", "GROSS"]);
   const SPLIT = /[+,;&]/;
   const STOP = new Set(["the", "and", "with", "for", "inc", "incl", "including", "donotuse", "set", "per", "week", "day",
@@ -325,7 +325,12 @@ details[open] > summary { margin-bottom: 10px; }
 
   const colLetter = (i) => { let s = ""; i++; while (i > 0) { const m = (i - 1) % 26; s = String.fromCharCode(65 + m) + s; i = Math.floor((i - 1) / 26); } return s; };
   const colIndex = (l) => l.toUpperCase().split("").reduce((a, ch) => a * 26 + ch.charCodeAt(0) - 64, 0) - 1;
-  const dayKey = (v) => isDate(v) && !isNaN(v) ? v.toISOString().slice(0, 10) : null;
+  // A real date, or text like 19/08/2025 (day first)
+  function dayKey(v) {
+    if (isDate(v)) return isNaN(v) ? null : v.toISOString().slice(0, 10);
+    const m = typeof v === "string" && /^\s*(\d{1,2})\/(\d{1,2})\/(\d{4})\s*$/.exec(v);
+    return m ? `${m[3]}-${m[2].padStart(2, "0")}-${m[1].padStart(2, "0")}` : null;
+  }
   const text = (v) => v === null || v === undefined ? "" : (isDate(v) ? dayKey(v) : String(v).replace(/\s+/g, " ").trim());
 
   // ---------- description helpers ----------
