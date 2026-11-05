@@ -163,7 +163,8 @@ tr.current td { box-shadow: inset 0 2px 0 var(--focus), inset 0 -2px 0 var(--foc
 
 /* Step 3: check each pairing, one at a time */
 .review { margin: 24px auto 0; max-width: 640px; width: 100%; background: var(--surface); border: 2px solid var(--ink); border-radius: var(--radius); padding: 16px; display: flex; flex-direction: column; gap: 12px; }
-.rv-top { display: flex; gap: 10px; align-items: center; }
+.rv-top { display: flex; flex-wrap: wrap; gap: 6px 10px; align-items: center; }
+.rv-job { font-size: 22px; font-weight: 700; margin-right: auto; overflow-wrap: anywhere; }
 .rv-pos { font-size: 14px; color: var(--muted); font-variant-numeric: tabular-nums; }
 .rv-pos b { font-family: var(--display); font-size: 22px; color: var(--ink); }
 .rv-kind { font-size: 12px; font-weight: 700; padding: 2px 8px; border-radius: 4px; background: var(--warn-fill); color: var(--warn); }
@@ -1067,9 +1068,11 @@ details[open] > summary { margin-bottom: 10px; }
     }
 
     const p = q[state.pos], d = decisionOf(p);
+    // The ACS job sheet this pairing is on, as the card's title
+    const job = [...new Set(p.items.length ? p.items.map((a) => a.sheet) : p.acsAt.map((c) => c.split("!")[0]))].join(", ");
     const rows = checks(p).map((c) => `<tr class="${c.ok ? "pc-ok" : "pc-bad"}"><th>${c.k}</th><td>${c.s}</td><td>${c.a}</td><td class="pc-mark">${c.ok ? "✓" : "✗"}</td></tr>`).join("");
     box.innerHTML = `<section class="review">
-      <div class="rv-top"><span class="rv-pos"><b>${state.pos + 1}</b> of ${n}</span>${p.kind !== "match" ? `<span class="rv-kind">Different code</span>` : ""}${d ? decisionPill(d) : ""}</div>
+      <div class="rv-top"><h2 class="rv-job">${esc(job)}</h2><span class="rv-pos"><b>${state.pos + 1}</b> of ${n}</span>${p.kind !== "match" ? `<span class="rv-kind">Different code</span>` : ""}${d ? decisionPill(d) : ""}</div>
       <div class="rv-bar" aria-hidden="true"><span style="width:${100 * done / n}%"></span></div>
       <table class="pc"><thead><tr><th></th><th>Supplier</th><th>ACS</th><th></th></tr></thead><tbody>${rows}</tbody></table>
       <div class="rv-actions">

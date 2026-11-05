@@ -402,9 +402,11 @@
     }
 
     const p = q[state.pos], d = decisionOf(p);
+    // The ACS job sheet this pairing is on, as the card's title
+    const job = [...new Set(p.items.length ? p.items.map((a) => a.sheet) : p.acsAt.map((c) => c.split("!")[0]))].join(", ");
     const rows = checks(p).map((c) => `<tr class="${c.ok ? "pc-ok" : "pc-bad"}"><th>${c.k}</th><td>${c.s}</td><td>${c.a}</td><td class="pc-mark">${c.ok ? "✓" : "✗"}</td></tr>`).join("");
     box.innerHTML = `<section class="review">
-      <div class="rv-top"><span class="rv-pos"><b>${state.pos + 1}</b> of ${n}</span>${p.kind !== "match" ? `<span class="rv-kind">Different code</span>` : ""}${d ? decisionPill(d) : ""}</div>
+      <div class="rv-top"><h2 class="rv-job">${esc(job)}</h2><span class="rv-pos"><b>${state.pos + 1}</b> of ${n}</span>${p.kind !== "match" ? `<span class="rv-kind">Different code</span>` : ""}${d ? decisionPill(d) : ""}</div>
       <div class="rv-bar" aria-hidden="true"><span style="width:${100 * done / n}%"></span></div>
       <table class="pc"><thead><tr><th></th><th>Supplier</th><th>ACS</th><th></th></tr></thead><tbody>${rows}</tbody></table>
       <div class="rv-actions">
