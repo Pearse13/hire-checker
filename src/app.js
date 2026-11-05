@@ -221,7 +221,7 @@
 
     const flaggedTable = charged.length ? `<div class="table-wrap"><table>
       <thead><tr><th>Row</th><th>Plant code</th><th>Plant</th><th>On hire</th><th class="num">Rate</th><th>Possible ACS match</th></tr></thead>
-      <tbody>${charged.map((f) => `<tr>
+      <tbody>${charged.map((f) => `<tr class="${rowClass(f)}">
         <td class="num">${f.row}</td><td class="code">${esc(f.raw)}</td><td class="desc">${esc(f.desc)}</td>
         <td class="num">${fmtDate(f.date)}</td><td class="num">${fmtRate(f.rate)}</td>
         <td class="hint">${possible(f)}</td>
@@ -238,7 +238,7 @@
     const jobs = [...byJob.entries()].sort((a, b) => b[1].length - a[1].length);
     const matchedTable = r.matched.length ? `<div class="table-wrap"><table>
       <thead><tr><th>Row</th><th>Plant code</th><th>Plant</th><th>On hire</th><th class="num">Rate</th><th>ACS cell</th><th>Your check</th></tr></thead>
-      <tbody>${jobs.map(([job, ms]) => `<tr class="group"><td colspan="7">${esc(job)} · ${ms.length}</td></tr>` + ms.map((m) => { const d = lineDecision(m); return `<tr class="${d === "approved" ? "matched" : ""}"><td class="num">${m.row}</td><td class="code">${esc(m.raw)}</td><td class="desc">${esc(m.desc)}</td><td class="num">${fmtDate(m.date)}</td><td class="num">${fmtRate(m.rate)}</td><td class="code">${m.acsAt.map(esc).join("<br>")}</td><td>${decisionPill(d)}</td></tr>`; }).join("")).join("")}</tbody></table></div>`
+      <tbody>${jobs.map(([job, ms]) => `<tr class="group"><td colspan="7">${esc(job)} · ${ms.length}</td></tr>` + ms.map((m) => { const d = lineDecision(m); return `<tr class="${rowClass(m)}"><td class="num">${m.row}</td><td class="code">${esc(m.raw)}</td><td class="desc">${esc(m.desc)}</td><td class="num">${fmtDate(m.date)}</td><td class="num">${fmtRate(m.rate)}</td><td class="code">${m.acsAt.map(esc).join("<br>")}</td><td>${decisionPill(d)}</td></tr>`; }).join("")).join("")}</tbody></table></div>`
       : `<p class="empty">No lines on this report match the ACS report. Check the plant code column above.</p>`;
 
     const freeTable = free.length ? `<details><summary>${plural(free.length, "line")} not on the ACS report with no charge (accessories, notes)</summary><div class="table-wrap"><table>
@@ -355,6 +355,7 @@
   }
 
   // ---------- step 3: one pairing at a time ----------
+  const rowClass = (m) => [lineDecision(m) === "approved" ? "matched" : "", reviewing() && state.queue[state.pos].line === m ? "current" : ""].join(" ");
   const lineDecision = (m) => { const p = state.queue.find((q) => q.line === m); return p ? decisionOf(p) : null; };
   const decisionPill = (d) => d === "approved" ? `<span class="pill ok">Approved</span>` : d === "rejected" ? `<span class="pill flag">Rejected</span>` : `<span class="pill warn">Waiting</span>`;
   const reviewing = () => state.cross && state.queue.length && state.pos < state.queue.length;
@@ -424,8 +425,13 @@
     if ($("runCheck")) $("runCheck").addEventListener("click", runCheck);
     renderFiles(); renderNotices(); renderReview();
     document.body.classList.toggle("checking", !!reviewing());
-    if (reviewing()) { for (const id of ["suggest", "marked", "tabs", "result"]) $(id).innerHTML = ""; }
-    else { renderSuggestions(); renderMarked(); renderTabs(); renderResult(); }
+    // While checking: the card, then the current pairing's supplier tab, updating as each one is approved
+    if (reviewing()) {
+      const i = state.suppliers.findIndex((s) => s.name === state.queue[state.pos].line.supplier);
+      if (i >= 0) state.active = i;
+      $("suggest").innerHTML = $("marked").innerHTML = "";
+    } else { renderSuggestions(); renderMarked(); }
+    renderTabs(); renderResult();
     if (state.focusReview) {
       state.focusReview = false;
       const b = $("rvYes") || $("rvFirst") || $("rvAgain");
