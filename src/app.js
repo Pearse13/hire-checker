@@ -49,7 +49,7 @@
     // One job at a time, in the ACS report's sheet order
     state.jobs = state.cross ? [...new Set([...state.acs.items.map((a) => a.sheet), ...state.queue.map(mainJob)])] : [];
     state.queue.sort((a, b) => state.jobs.indexOf(mainJob(a)) - state.jobs.indexOf(mainJob(b)));
-    state.parked = new Set();
+    state.parked = new Set(); state.lineCache = new Map();
     state.decisions = loadDecisions();
     state.pos = nextWaiting(0);
     state.step = 1; state.second = []; state.spos = 0; state.again = false;
@@ -73,22 +73,32 @@
     return state.queue.length;
   }
   function changed() { saveDecisions(); state.acsSave = null; for (const s of state.suppliers) s.saveState = null; }
+  // An answer covers everything that's the same thing: the same code charged again, and the other assets on an ACS line listing several
+  function setAnswer(p, v) {
+    const cells = new Set(p.items.filter((a) => a.codes.length > 1).map((a) => a.cell));
+    state.decisions.set(p.id, v);
+    for (const q of state.queue) {
+      if (decisionOf(q) || stillCharged(q)) continue;
+      if ((q.line.supplier === p.line.supplier && q.line.code === p.line.code) || q.items.some((a) => cells.has(a.cell))) state.decisions.set(q.id, v);
+    }
+  }
   function decide(v) {
     const p = state.queue[state.pos];
     if (!p) return;
-    state.decisions.set(p.id, v);
+    setAnswer(p, v);
     changed();
     state.pos = state.again ? state.pos + 1 : nextWaiting(state.pos + 1);
     if (state.pos >= state.queue.length) state.pos = Math.min(nextWaiting(0), state.queue.length);
     if (state.pos >= state.queue.length) enterSecond(true);
     show();
   }
-  // For the job on the card: approves every waiting plant-code match where item, cost, company and date all agree.
+  // For the job on the card: approves every waiting pairing where the code and cost agree.
   // Anything else stays waiting and comes up in the second look. Then on to the next job.
   function checkAll() {
     const job = mainJob(state.queue[state.pos]);
     for (const p of state.queue) if (mainJob(p) === job && !decisionOf(p)) {
-      if (p.kind === "match" && !checks(p, true).bad) state.decisions.set(p.id, "approved");
+      const c = checks(p, true);
+      if (c.rows[0].ok && !c.bad) state.decisions.set(p.id, "approved");
       else state.parked.add(p.id);
     }
     changed();
@@ -109,20 +119,24 @@
   }
 
   // ---------- second look: one at a time, once the pairings are done ----------
-  // Pairings with something wrong come back highlighted, then everything nothing could be paired with.
+  // Pairings still waiting for an answer, then everything nothing could be paired with. An answered pairing never comes back.
   const lineKey = (f) => `${f.supplier}|${f.sheet}|${f.row}`;
   function buildSecond() {
     const out = [];
     const cells = new Set(state.queue.flatMap((p) => p.items.map((a) => a.cell)));
     const lines = new Set(state.queue.flatMap((p) => p.lines));
-    for (const p of state.queue) if (!decisionOf(p) || (decisionOf(p) === "approved" && checks(p, true).bad)) out.push({ id: "seen:p:" + p.id, type: "pairing", p });
+    const asks = state.queue.filter((p) => !decisionOf(p) || state.decisions.has("seen:p:" + p.id));
+    for (const p of [...asks.filter(stillCharged), ...asks.filter((p) => !stillCharged(p))]) out.push({ id: "seen:p:" + p.id, type: "pairing", p });
     for (const s of state.suppliers) for (const f of s.result.flagged) if (f.charged && !lines.has(f)) out.push({ id: "seen:c:" + lineKey(f), type: "charged", f, company: s.result.company });
     for (const s of state.suppliers) for (const a of s.result.notCharged) if (!cells.has(a.cell)) { cells.add(a.cell); out.push({ id: "seen:n:" + a.cell, type: "notCharged", a }); }
     for (const z of state.cross.zeroPass) if (!z.line && !cells.has(z.acs.cell)) out.push({ id: "seen:z:" + z.acs.cell, type: "zero", a: z.acs });
     return out;
   }
   function nextUnseen(i) {
-    for (let j = i; j < state.second.length; j++) if (!state.decisions.get(state.second[j].id)) return j;
+    for (let j = i; j < state.second.length; j++) {
+      const it = state.second[j];
+      if (!state.decisions.get(it.id) && !(it.p && decisionOf(it.p))) return j;
+    }
     return state.second.length;
   }
   function enterSecond(click) {
@@ -135,7 +149,7 @@
   function answer(v, outcome) {
     const it = state.second[state.spos];
     if (!it) return;
-    if (it.type === "pairing" && v) state.decisions.set(it.p.id, v);
+    if (it.type === "pairing" && v) setAnswer(it.p, v);
     if (outcome) state.decisions.set("outcome:" + it.id, outcome);
     state.otherOpen = false;
     state.decisions.set(it.id, "seen");
@@ -189,6 +203,7 @@
     const wb = new ExcelJS.Workbook();
     await wb.xlsx.load(s.buf.slice(0));
     E.markWorkbook(wb, s.result, supplierMarks(s), lineOutcomes().filter((o) => o.supplier === s.name));
+    E.markMissing(wb, supplierMissing(s));
     const out = await wb.xlsx.writeBuffer();
     return new Blob([out], { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" });
   }
@@ -201,10 +216,29 @@
   const withOutcome = () => state.second.map((it) => ({ it, text: state.decisions.get("outcome:" + it.id) })).filter((o) => o.text);
   const lineOutcomes = () => withOutcome().flatMap(({ it, text }) => (it.p ? it.p.lines : it.f ? [it.f] : []).map((f) => ({ supplier: f.supplier, sheet: f.sheet, row: f.row, text })));
   const itemOutcomes = () => withOutcome().flatMap(({ it, text }) => (it.p ? it.p.items : it.a ? [it.a] : []).map((item) => ({ item, text })));
+  const costText = (v) => `£${(v || 0).toFixed(2)}`;
+  // Charged lines not on the ACS report, unless an approved pairing covers them
+  function supplierMissing(s) {
+    const paired = new Set(approved().flatMap((p) => p.lines));
+    return s.result.flagged.filter((f) => f.charged && !paired.has(f)).map((f) => ({ sheet: f.sheet, row: f.row, width: s.result.sheets.find((x) => x.title === f.sheet).width,
+      text: `Row ${f.row}: ${f.raw} ${f.desc}, ${costText(E.money(f.rate))}: not on the ACS report.` }))
+      .concat(state.queue.filter((p) => stillCharged(p) && decisionOf(p) !== "approved").flatMap((p) => p.lines).filter((f) => f.supplier === s.name && f.charged)
+        .map((f) => ({ sheet: f.sheet, row: f.row, width: s.result.sheets.find((x) => x.title === f.sheet).width, text: `Row ${f.row}: ${f.raw} ${f.desc}, ${costText(E.money(f.rate))}: off-hire on ACS, still being charged.` })));
+  }
+  // ACS lines not on their supplier's report, and £0 lines not found on any report, unless they've been marked
+  function acsMissing() {
+    const marked = new Set(acsLines().map((a) => a.cell)), lines = new Map();
+    const add = (a, codes, why) => { if (!marked.has(a.cell) && !lines.has(a.cell)) lines.set(a.cell, { sheet: a.sheet, row: a.row, width: a.width, text: `Row ${a.row}: ${codes} ${a.desc}, ${costText(a.rate)}: ${why}.` }); };
+    for (const s of state.suppliers) for (const a of s.result.notCharged) add(a, a.missing.length === a.codes.length ? a.assetText : a.missing.join(", "), `not on the ${a.company} report`);
+    for (const p of state.queue) if (stillCharged(p) && decisionOf(p) !== "approved") for (const a of p.items) add(a, a.assetText, "off-hire, but still being charged");
+    for (const z of state.cross.zeroPass) if (!z.line) add(z.acs, z.acs.assetText, "not found on a supplier report");
+    return [...lines.values()];
+  }
   async function buildACS() {
     const wb = new ExcelJS.Workbook();
     await wb.xlsx.load(state.acs.buf.slice(0));
     E.markACS(wb, acsLines(), itemOutcomes());
+    E.markMissing(wb, acsMissing());
     return new Blob([await wb.xlsx.writeBuffer()], { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" });
   }
 
@@ -449,40 +483,63 @@
   const shortName = (name) => name.replace(/\.xlsx?m?$/i, "");
   const missing = `<span class="pc-none">Not given</span>`;
 
-  // Sizes on both descriptions that disagree (5m vs 10m hose)
-  function sizeClash(x, y) {
-    const a = E.measures(x), b = E.measures(y);
-    const units = [...a.values()].filter((u) => [...b.values()].includes(u));
-    return units.length > 0 && ![...a.keys()].some((k) => b.has(k));
+  // Off-hire on the ACS report but still being charged: never goes through by itself
+  const stillCharged = (p) => p.items.length > 0 && p.items.every((a) => a.offHire) && p.lines.some((f) => f.charged);
+  const lineTotal = (f) => (E.money(f.rate) || 0) * (f.qty || 1);
+  // Every supplier line charging for an ACS line: its codes, read past typing slips, and lines suggested for it
+  function linesFor(a) {
+    if (!state.lineCache.has(a.cell)) {
+      const lines = state.suppliers.flatMap((s) => [...s.result.matched, ...s.result.flagged]).filter((f) => E.codeOnLine(f.code, a));
+      lines.push(...state.queue.filter((q) => q.items.some((i) => i.cell === a.cell)).flatMap((q) => q.stand));
+      state.lineCache.set(a.cell, [...new Set(lines)].filter((f) => lineTotal(f) > 0).slice(0, 14));
+    }
+    return state.lineCache.get(a.cell);
   }
-  // The four things checked on every pairing: item, cost, company, on-hire date. ok: true agree, false don't (or missing).
-  // bad: something doesn't agree. Only the second look (hl) highlights it.
+  // The fewest of those lines that add up to the ACS cost exactly, and include must if given.
+  // Rates are per item (rate × quantity), but some suppliers' rate is already the line's cost.
+  function addsUp(a, ar, must) { return sumsTo(a, ar, must, lineTotal) || sumsTo(a, ar, must, (f) => E.money(f.rate) || 0); }
+  function sumsTo(a, ar, must, value) {
+    const lines = linesFor(a);
+    let best = null;
+    for (let m = 1; m < 1 << lines.length; m++) {
+      const pick = lines.filter((_, i) => m & (1 << i));
+      if ((!must || pick.includes(must)) && (!best || pick.length < best.length) && near(pick.reduce((t, f) => t + value(f), 0), ar)) best = pick;
+    }
+    return best;
+  }
+  // What every pairing shows: item, cost, company, on-hire date. Only the code and cost are checked: ok is true when they agree.
+  // Descriptions are never compared, and a code a slip away from the ACS one counts as the same.
+  // bad: the cost doesn't agree. Only the second look (hl) highlights it.
   function checks(p, hl) {
-    const ls = p.lines, a = p.items[0] || {};
+    const ls = p.lines;
     const sup = state.suppliers.find((s) => s.name === ls[0].supplier);
     const company = sup && sup.result.company;
     const rates = ls.map((f) => E.money(f.rate));
     const fr = rates.some((r) => r == null) ? null : rates.reduce((t, r) => t + r, 0);
-    const ar = a.zero ? 0 : a.rate;
-    const fw = new Set(ls.flatMap((f) => [...E.words(f.desc)]));
-    const sameWord = [...E.words(a.desc || "")].some((w) => fw.has(w));
+    // The supplier lines this cost agrees through, or null. 2 items in one is 2 costs.
+    const same = (i) => {
+      const ar = i.zero ? 0 : i.rate, n = Math.max(i.qty || 1, i.codes.length);
+      if (fr == null || ar == null) return null;
+      if (near(fr, ar) || near(fr * n, ar) || near(fr * (ls[0].qty || 1), ar)) return [ls[0]];
+      return addsUp(i, ar, fr > 0 ? ls[0] : null);
+    };
+    const a = p.items.find(same) || p.items[0] || {}, ar = a.zero ? 0 : a.rate;
+    const hit = a.cell ? same(a) : null, others = (hit || []).filter((f) => f !== ls[0]);
+    const parts = Math.max(a.qty || 1, (a.codes || []).length);
     const cost = (v, qty) => v == null ? missing : `£${v.toFixed(2)}${qty > 1 ? ` <small>× ${qty}</small>` : ""}`;
     const name = (n, code) => `${n ? esc(n) : missing}${code ? `<span class="pc-code">${esc(code)}</span>` : ""}`;
     const dates = [...new Set(ls.map((f) => f.date))];
     const rest = [
-      { k: "Company", s: esc(company || shortName(ls[0].supplier)), a: a.company ? esc(a.company) : missing,
-        ok: !!(company && a.company && company.toLowerCase() === a.company.toLowerCase()) },
-      { k: "On hire", s: dates.map((d) => d ? fmtDate(d) : missing).join("<br>"), a: a.date ? fmtDate(a.date) : missing,
-        ok: !!a.date && dates.length === 1 && dates[0] === a.date },
+      { k: "Company", s: esc(company || shortName(ls[0].supplier)), a: a.company ? esc(a.company) : missing },
+      { k: "On hire", s: dates.map((d) => d ? fmtDate(d) : missing).join("<br>"), a: a.date ? fmtDate(a.date) : missing },
     ];
     const rows = [
       { k: "Item", s: name(ls[0].desc, ls[0].raw), a: name(a.desc, a.assetText || p.acsAt.join(", ")),
-        ok: !!ls[0].desc && !!a.desc && !sizeClash(ls[0].desc, a.desc) && (p.kind === "match" || sameWord) },
-      { k: "Cost", s: cost(fr, ls[0].qty), a: cost(ar, a.qty),
-        ok: fr != null && ar != null && (near(fr, ar) || near(fr * (a.qty || 1), ar) || near(fr * (ls[0].qty || 1), ar)) },
+        ok: p.kind === "match" || (a.codes || []).some((c) => E.nearCode(ls[0].code, c)) || E.codeOnLine(ls[0].code, a) },
+      { k: "Cost", s: `${cost(fr, ls[0].qty)}${others.length ? `<span class="pc-code">${fr ? "With" : "Cost on"} row${others.length > 1 ? "s" : ""} ${others.map((f) => f.row).join(", ")}: £${ar.toFixed(2)}</span>` : ""}`, a: `${cost(ar, 1)}${parts > 1 ? ` <small>for ${parts}</small>` : ""}`, ok: !!hit },
       ...rest,
     ];
-    return { rows, bad: rows.some((r) => !r.ok) };
+    return { rows, bad: !rows[1].ok || stillCharged(p) };
   }
 
   const jobOf = (p) => [...new Set(p.items.length ? p.items.map((a) => a.sheet) : p.acsAt.map((c) => c.split("!")[0]))].join(", ");
@@ -492,10 +549,11 @@
   // The card for one pairing. hl: the second look, where what doesn't agree is highlighted
   function pairingCard(p, count, progress, hl, back, skip, extra) {
     const d = decisionOf(p), c = checks(p, hl);
-    const rows = c.rows.map((r) => `<tr class="${!hl ? "" : r.ok ? "pc-ok" : "pc-bad"}"><th>${r.k}</th><td>${r.s}</td><td>${r.a}</td><td class="pc-mark">${!hl ? "" : r.ok ? "✓" : "✗"}</td></tr>`).join("");
+    const rows = c.rows.map((r) => `<tr class="${!hl || r.ok === undefined ? "" : r.ok ? "pc-ok" : "pc-bad"}"><th>${r.k}</th><td>${r.s}</td><td>${r.a}</td><td class="pc-mark">${!hl || r.ok === undefined ? "" : r.ok ? "✓" : "✗"}</td></tr>`).join("");
     return `<section class="review">
       <div class="rv-top"><h2 class="rv-job">${esc(jobOf(p))}</h2><span class="rv-pos">${count}</span>${p.kind !== "match" ? `<span class="rv-kind">Different code</span>` : ""}${d ? decisionPill(d) : ""}${extra ? extra.pill : ""}</div>
       ${progress}
+      ${hl && stillCharged(p) ? `<p class="rv-note">Off-hire on ACS, still being charged.</p>` : ""}
       <table class="pc"><thead><tr><th></th><th>Supplier</th><th>ACS</th><th></th></tr></thead><tbody>${rows}</tbody></table>
       <div class="rv-actions">
         <button class="btn big" id="rvYes">Approve <kbd>A</kbd></button>

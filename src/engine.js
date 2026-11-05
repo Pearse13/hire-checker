@@ -46,6 +46,23 @@
     return [];
   }
 
+  // Letters easily typed for digits: MBOI and MB0I are the same code
+  const canon = (s) => s.replace(/O/g, "0").replace(/[IL]/g, "1");
+  // A code written on an ACS line, read as above. Takes in parts cellCodes leaves out for having no digit.
+  const codeOnLine = (code, item) => String(item.assetText || "").split(SPLIT).some(p => canon(norm(p)) === canon(code));
+  // Two plant codes that differ by a slip of up to two characters (EX15TZ72 / EX15TZ82)
+  function nearCode(a, b) {
+    if (canon(a) === canon(b)) return true;
+    if (Math.min(a.length, b.length) < 5 || Math.abs(a.length - b.length) > 2) return false;
+    let row = Array.from({ length: b.length + 1 }, (_, j) => j);
+    for (let i = 1; i <= a.length; i++) {
+      const next = [i];
+      for (let j = 1; j <= b.length; j++) next[j] = Math.min(row[j] + 1, next[j - 1] + 1, row[j - 1] + (a[i - 1] === b[j - 1] ? 0 : 1));
+      row = next;
+    }
+    return row[b.length] <= 2;
+  }
+
   const colLetter = (i) => { let s = ""; i++; while (i > 0) { const m = (i - 1) % 26; s = String.fromCharCode(65 + m) + s; i = Math.floor((i - 1) / 26); } return s; };
   const colIndex = (l) => l.toUpperCase().split("").reduce((a, ch) => a * 26 + ch.charCodeAt(0) - 64, 0) - 1;
   // A real date, or text like 19/08/2025 (day first)
@@ -316,6 +333,7 @@
 
   // ---------- marked-up copies ----------
   const GREEN = { type: "pattern", pattern: "solid", fgColor: { argb: "FFC6EFCE" }, bgColor: { argb: "FFC6EFCE" } };
+  const AMBER = { type: "pattern", pattern: "solid", fgColor: { argb: "FFFFEB9C" } };
   // cells share style objects in ExcelJS: always give a cell its own copy
   const restyle = (cell, extra) => {
     if (cell.isMerged && cell.master !== cell) return;
@@ -372,6 +390,27 @@
     }
   }
 
+  // Lines missing from the other report: amber across the line, and a comment for each under the sheet's last line.
+  // entries: [{sheet, row, width, text}], none in the script.
+  function markMissing(wb, entries) {
+    for (const title of new Set(entries.map(e => e.sheet))) {
+      const ws = wb.getWorksheet(title);
+      if (!ws) continue;
+      const notes = entries.filter(e => e.sheet === title).sort((a, b) => a.row - b.row);
+      for (const e of notes) {
+        const row = ws.getRow(e.row);
+        for (let c = 1; c <= e.width; c++) restyle(row.getCell(c), () => ({ fill: AMBER }));
+      }
+      let last = ws.rowCount, col = Infinity;
+      while (last > 0 && !ws.getRow(last).hasValues) last--;
+      ws.eachRow((row) => row.eachCell((cell, i) => { if (i < col) col = i; }));
+      const head = ws.getRow(last + 2).getCell(col);
+      head.value = "Missing";
+      restyle(head, s => ({ font: Object.assign({}, s.font, { bold: true }) }));
+      notes.forEach((e, i) => { ws.getRow(last + 3 + i).getCell(col).value = e.text; });
+    }
+  }
+
   // ACS lines charged on the supplier reports. A line listing several assets needs all of them charged.
   function acsChargedLines(acs, results) {
     const charged = new Set();
@@ -410,6 +449,12 @@
     if (cross) {
       for (const g of cross.suggestions) if (g.acs)
         out.push({ id: key([g.line], [g.acs.cell]), kind: "suggest", line: g.line, lines: [g.line], items: [g.acs], acsAt: [g.acs.cell], codes: [], stand: [g.line], reasons: g.reasons });
+      // Charged lines whose code is on an ACS line with a typing slip
+      const paired = new Set(out.map(p => p.line));
+      for (const r of results) for (const f of r.flagged) {
+        const a = f.charged && !paired.has(f) && acs.items.find(i => codeOnLine(f.code, i));
+        if (a) out.push({ id: key([f], [a.cell]), kind: "suggest", line: f, lines: [f], items: [a], acsAt: [a.cell], codes: [], stand: [f], reasons: [] });
+      }
       for (const z of cross.zeroPass) if (z.line)
         out.push({ id: key([z.line], [z.acs.cell]), kind: "zero", line: z.line, lines: [z.line], items: [z.acs], acsAt: [z.acs.cell], codes: [], stand: [z.line], reasons: z.reasons });
     }
@@ -446,7 +491,7 @@
     return zip.generateAsync({ type: "arraybuffer" });
   }
 
-  const api = { cleanXlsx, crossCheck, acsChargedLines, acsApprovedLines, pairings, markACS, markWorkbook, plain, norm, looksLikeCode, cellCodes,
+  const api = { cleanXlsx, crossCheck, acsChargedLines, acsApprovedLines, pairings, markACS, markWorkbook, markMissing, nearCode, codeOnLine, plain, norm, looksLikeCode, cellCodes,
     readACS, checkSupplier, colLetter, colIndex, words, measures, qtyFrom, money };
   if (typeof module !== "undefined" && module.exports) module.exports = api; else root.HireEngine = api;
 })(typeof globalThis !== "undefined" ? globalThis : this);
