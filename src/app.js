@@ -113,10 +113,13 @@
     state.spos = nextUnseen(0);
     if (state.spos >= state.second.length) { state.step = 3; state.autoSave = !!click; }
   }
-  function answer(v) {
+  // v: approve or reject a pairing. outcome: what happened to it, kept with the check and left off the spreadsheets.
+  function answer(v, outcome) {
     const it = state.second[state.spos];
     if (!it) return;
-    if (it.type === "pairing") state.decisions.set(it.p.id, v);
+    if (it.type === "pairing" && v) state.decisions.set(it.p.id, v);
+    if (outcome) state.decisions.set("outcome:" + it.id, outcome);
+    state.otherOpen = false;
     state.decisions.set(it.id, "seen");
     changed();
     state.spos = nextUnseen(state.spos + 1);
@@ -124,6 +127,7 @@
     show();
   }
   function secondBack() {
+    state.otherOpen = false;
     if (state.spos > 0) state.spos--;
     else { state.step = 1; state.pos = Math.max(0, state.queue.length - 1); state.again = true; }
     show();
@@ -415,11 +419,11 @@
   const bar = (at, n) => `<div class="rv-bar" aria-hidden="true"><span style="width:${n ? 100 * at / n : 0}%"></span></div>`;
 
   // The card for one pairing. hl: the second look, where what doesn't agree is highlighted
-  function pairingCard(p, count, progress, hl, back, skip) {
+  function pairingCard(p, count, progress, hl, back, skip, extra) {
     const d = decisionOf(p), c = checks(p, hl);
     const rows = c.rows.map((r) => `<tr class="${!hl ? "" : r.ok ? "pc-ok" : "pc-bad"}"><th>${r.k}</th><td>${r.s}</td><td>${r.a}</td><td class="pc-mark">${!hl ? "" : r.ok ? "✓" : "✗"}</td></tr>`).join("");
     return `<section class="review">
-      <div class="rv-top"><h2 class="rv-job">${esc(jobOf(p))}${c.group ? `<small>${esc(c.title)}</small>` : ""}</h2><span class="rv-pos">${count}</span>${p.kind !== "match" ? `<span class="rv-kind">Different code</span>` : ""}${d ? decisionPill(d) : ""}</div>
+      <div class="rv-top"><h2 class="rv-job">${esc(jobOf(p))}${c.group ? `<small>${esc(c.title)}</small>` : ""}</h2><span class="rv-pos">${count}</span>${p.kind !== "match" ? `<span class="rv-kind">Different code</span>` : ""}${d ? decisionPill(d) : ""}${extra ? extra.pill : ""}</div>
       ${progress}
       ${c.group ? c.tally : ""}
       <table class="pc"><thead><tr><th></th><th>Supplier</th><th>ACS</th><th></th></tr></thead><tbody>${rows}</tbody></table>
@@ -428,12 +432,24 @@
         <button class="btn big" id="rvNo">Reject <kbd>R</kbd></button>
         <button class="btn" id="rvBack" ${back ? "" : "disabled"}>Back</button>
         ${skip ? `<button class="btn" id="rvSkip">Skip</button>` : ""}
-      </div></section>`;
+      </div>${extra ? extra.buttons : ""}</section>`;
+  }
+
+  // What happened to a second-look item. Keys 1 to 5 press the buttons in order.
+  const outcomesFor = (it) => [...(it.type === "charged" ? ["New plant"] : []), "Off-hired", "Moved site", "Loss charge applied", "Query with supplier"];
+  function outcomeBits(it) {
+    const was = state.decisions.get("outcome:" + it.id);
+    return {
+      pill: was ? `<span class="pill ok">${esc(was)}</span>` : "",
+      buttons: `<div class="rv-outcomes">${outcomesFor(it).map((o, i) => `<button class="btn" data-out="${esc(o)}">${esc(o)} <kbd>${i + 1}</kbd></button>`).join("")}
+        <button class="btn" id="rvOther">Other</button></div>
+        ${state.otherOpen ? `<form class="rv-other" id="rvOtherForm"><input id="rvOtherText" aria-label="What happened" placeholder="What happened?" maxlength="120"><button class="btn">Save</button></form>` : ""}`,
+    };
   }
 
   // Second-look card for something with no pairing: reported, not marked
   function leftoverCard(it, count, progress) {
-    const f = it.f, a = it.a;
+    const f = it.f, a = it.a, bits = outcomeBits(it);
     const gbp = (v) => v == null ? missing : `£${v.toFixed(2)}`;
     const row = (k, v) => `<tr><th>${k}</th><td>${v}</td></tr>`;
     const notes = [];
@@ -445,13 +461,14 @@
       ? row("Item", `${f.desc ? esc(f.desc) : missing}<span class="pc-code">${esc(f.raw)}</span>`) + row("Cost", gbp(E.money(f.rate))) + row("Company", esc(it.company || shortName(f.supplier))) + row("On hire", f.date ? fmtDate(f.date) : missing)
       : row("Item", `${a.desc ? esc(a.desc) : missing}<span class="pc-code">${esc(codes)}</span>`) + row("Cost", gbp(a.zero ? 0 : a.rate)) + row("Company", a.company ? esc(a.company) : missing) + row("On hire", a.date ? fmtDate(a.date) : missing);
     return `<section class="review">
-      <div class="rv-top"><h2 class="rv-job">${esc(f ? shortName(f.supplier) : a.sheet)}<small>${label}</small></h2><span class="rv-pos">${count}</span></div>
+      <div class="rv-top"><h2 class="rv-job">${esc(f ? shortName(f.supplier) : a.sheet)}<small>${label}</small></h2><span class="rv-pos">${count}</span>${bits.pill}</div>
       ${progress}
       <table class="pc pc-one"><tbody>${rows}</tbody></table>
       ${notes.map((n) => `<p class="rv-note">${esc(n)}</p>`).join("")}
+      ${bits.buttons}
       <div class="rv-actions">
-        <button class="btn big" id="rvNext">Next <kbd>A</kbd></button>
         <button class="btn" id="rvBack">Back</button>
+        <button class="btn" id="rvSkip">Skip</button>
       </div></section>`;
   }
 
@@ -463,8 +480,10 @@
     const wire = (id, fn) => { if ($(id)) $(id).addEventListener("click", fn); };
 
     if (state.step === 3) {
-      const yes = approved().length;
+      const yes = approved().length, tally = new Map();
+      for (const it of state.second) { const o = state.decisions.get("outcome:" + it.id); if (o) tally.set(o, (tally.get(o) || 0) + 1); }
       box.innerHTML = `<section class="review rv-done"><p><b>All ${n} checked.</b> ${yes} approved, ${n - yes} not.</p>
+        ${tally.size ? `<p>${[...tally].map(([o, c]) => `${esc(o)}: ${c}`).join(" · ")}</p>` : ""}
         <div class="rv-actions"><button class="btn" id="rvAgain">Go through again</button></div></section>`;
       wire("rvAgain", goAgain);
       return;
@@ -472,9 +491,12 @@
     if (state.step === 2) {
       const it = state.second[state.spos], m = state.second.length;
       const count = `<b>${state.spos + 1}</b> of ${m} second look`, progress = bar(state.spos, m);
-      box.innerHTML = it.p ? pairingCard(it.p, count, progress, true, true, false) : leftoverCard(it, count, progress);
-      wire("rvYes", () => answer("approved")); wire("rvNo", () => answer("rejected")); wire("rvNext", () => answer());
+      box.innerHTML = it.p ? pairingCard(it.p, count, progress, true, true, false, outcomeBits(it)) : leftoverCard(it, count, progress);
+      wire("rvYes", () => answer("approved")); wire("rvNo", () => answer("rejected")); wire("rvSkip", () => answer());
       wire("rvBack", secondBack);
+      box.querySelectorAll("[data-out]").forEach((b) => b.addEventListener("click", () => answer(null, b.dataset.out)));
+      wire("rvOther", () => { state.otherOpen = true; render(); $("rvOtherText").focus(); });
+      if ($("rvOtherForm")) $("rvOtherForm").addEventListener("submit", (e) => { e.preventDefault(); const t = $("rvOtherText").value.trim(); if (t) answer(null, t); });
       return;
     }
     if (state.pos >= n) {
@@ -503,7 +525,7 @@
     renderTabs(); renderResult();
     if (state.focusReview) {
       state.focusReview = false;
-      const b = $("rvYes") || $("rvNext") || $("rvFirst") || $("rvAgain");
+      const b = $("rvYes") || document.querySelector("[data-out]") || $("rvFirst") || $("rvAgain");
       if (b) b.focus({ preventScroll: true });
     }
   }
@@ -530,9 +552,11 @@
     if (!state.cross || !reviewing() || e.ctrlKey || e.metaKey || e.altKey || /^(INPUT|SELECT|TEXTAREA)$/.test(e.target.tagName)) return;
     const k = e.key.toLowerCase(), second = state.step === 2;
     const it = second ? state.second[state.spos] : null;
-    if (k === "a") second ? answer("approved") : decide("approved");
+    const out = second && /^[1-9]$/.test(k) ? document.querySelectorAll("[data-out]")[+k - 1] : null;
+    if (out) out.click();
+    else if (k === "a" && (!second || it.p)) second ? answer("approved") : decide("approved");
     else if (k === "r" && (!second || it.p)) second ? answer("rejected") : decide("rejected");
-    else if (k === "arrowright" && !second) move(1);
+    else if (k === "arrowright") second ? answer() : move(1);
     else if (k === "arrowleft") { if (second) secondBack(); else if (state.pos > 0) move(-1); }
     else return;
     e.preventDefault();
