@@ -76,6 +76,10 @@ button, select, input { font: inherit; color: inherit; }
 @media (max-width: 720px) { .inputs { grid-template-columns: 1fr; } }
 .drop { position: relative; background: var(--surface); border: 2px dashed var(--line); border-radius: var(--radius); padding: 22px 20px; display: flex; flex-direction: column; align-items: center; text-align: center; gap: 8px; transition: border-color .15s, background-color .15s; }
 .drop.over { border-color: var(--focus); }
+body.checking .inputs { gap: 8px; }
+body.checking .drop { padding: 8px 12px; gap: 0; }
+body.checking .drop :is(.step, h2, p, .pick, .files small) { display: none; }
+body.checking .drop .files { font-size: 13px; }
 .drop.filled { border-style: solid; }
 .drop .step { font-size: 12px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.08em; color: var(--muted); }
 .drop h2 { font-size: 19px; font-weight: 600; }
@@ -157,47 +161,34 @@ tr.matched td { background: var(--ok-fill); color: var(--ok-ink); font-weight: 6
 .sg-list .code { font-size: 13px; white-space: normal; overflow-wrap: anywhere; }
 
 /* Step 3: check each pairing, one at a time */
-.review { margin-top: 24px; background: var(--surface); border: 2px solid var(--ink); border-radius: var(--radius); padding: 18px 20px; display: flex; flex-direction: column; gap: 14px; }
-.rv-head { display: flex; flex-wrap: wrap; gap: 8px 24px; align-items: flex-end; justify-content: space-between; }
-.rv-head .step { font-size: 12px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.08em; color: var(--muted); }
-.rv-head h2 { font-size: 19px; font-weight: 600; }
-.rv-count { font-size: 14px; color: var(--muted); font-variant-numeric: tabular-nums; }
-.rv-count b { font-family: var(--display); font-size: 22px; color: var(--ink); }
-.rv-bar { height: 6px; background: var(--bg); border-radius: 999px; overflow: hidden; }
+.review { margin: 24px auto 0; max-width: 640px; width: 100%; background: var(--surface); border: 2px solid var(--ink); border-radius: var(--radius); padding: 16px; display: flex; flex-direction: column; gap: 12px; }
+.rv-top { display: flex; gap: 10px; align-items: center; }
+.rv-pos { font-size: 14px; color: var(--muted); font-variant-numeric: tabular-nums; }
+.rv-pos b { font-family: var(--display); font-size: 22px; color: var(--ink); }
+.rv-kind { font-size: 12px; font-weight: 700; padding: 2px 8px; border-radius: 4px; background: var(--warn-fill); color: var(--warn); }
+.rv-bar { height: 5px; background: var(--bg); border-radius: 999px; overflow: hidden; }
 .rv-bar span { display: block; height: 100%; background: var(--ok); transition: width .2s; }
-.rv-card { border: 1px solid var(--line); border-radius: var(--radius); padding: 16px; display: flex; flex-direction: column; gap: 14px; }
-.rv-top { display: flex; flex-wrap: wrap; gap: 6px 14px; justify-content: space-between; align-items: center; }
-.rv-kind { font-size: 13px; font-weight: 700; padding: 2px 10px; border-radius: 4px; background: var(--ok-fill); color: var(--ok-ink); }
-.rv-kind.suggest, .rv-kind.zero { background: var(--warn-fill); color: var(--warn); }
-.rv-pos { font-size: 13px; color: var(--muted); display: flex; gap: 8px; align-items: center; }
-.rv-pair { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
-@media (max-width: 720px) { .rv-pair { grid-template-columns: 1fr; } }
-.rv-side { background: var(--bg); border-radius: 4px; padding: 12px 14px; min-width: 0; }
-.rv-side h3 { font-size: 16px; font-weight: 600; }
-.rv-src { margin: 2px 0 8px; font-size: 13px; color: var(--muted); overflow-wrap: anywhere; }
-.rv-side dl { margin: 0; display: flex; flex-direction: column; gap: 4px; }
-.rv-side dl + dl { margin-top: 10px; padding-top: 10px; border-top: 1px solid var(--line); }
-.rv-f { display: grid; grid-template-columns: 92px 1fr; gap: 10px; font-size: 14px; }
-.rv-f dt { color: var(--muted); font-size: 13px; }
-.rv-f dd { margin: 0; min-width: 0; overflow-wrap: anywhere; }
-.rv-f .code { white-space: normal; overflow-wrap: anywhere; font-weight: 500; }
-.rv-why { margin: 0; font-size: 14px; }
+.pc { width: 100%; border-collapse: collapse; table-layout: fixed; }
+.pc thead th { font-size: 12px; text-transform: uppercase; letter-spacing: .06em; color: var(--muted); text-align: left; padding: 0 8px 6px; }
+.pc thead th:first-child { width: 78px; } .pc thead th:last-child { width: 32px; }
+.pc tbody th { text-align: left; font-size: 13px; color: var(--muted); font-weight: 600; padding: 10px 8px; vertical-align: top; }
+.pc td { padding: 10px 8px; font-size: 15px; vertical-align: top; overflow-wrap: anywhere; border-top: 1px solid var(--line); }
+.pc tbody th { border-top: 1px solid var(--line); }
+.pc-code { display: block; font-family: var(--mono, ui-monospace, monospace); font-size: 12px; color: var(--muted); margin-top: 2px; }
+.pc-none { color: var(--flag); font-style: italic; }
+.pc-mark { font-size: 18px; font-weight: 700; text-align: center; }
+.pc-ok .pc-mark { color: var(--ok); }
+.pc-bad td, .pc-bad th { background: var(--flag-fill, #fde8e8); }
+.pc-bad .pc-mark { color: var(--flag); }
 .rv-actions { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
-.rv-actions .btn { min-width: 92px; padding-block: 10px; }
-.rv-keys { font-size: 12px; color: var(--muted); margin-left: auto; }
-@media (hover: none) { .rv-keys { display: none; } }
-.rv-done { display: flex; flex-direction: column; gap: 10px; }
+.rv-actions .btn { padding-block: 10px; }
+.rv-actions .btn.big { flex: 1 1 140px; padding-block: 14px; font-size: 16px; }
+.rv-actions kbd { font: inherit; font-size: 12px; opacity: .7; margin-left: 4px; }
+@media (hover: none) { .rv-actions kbd { display: none; } }
 .rv-done p { margin: 0; }
-
 .run-box { display: flex; justify-content: center; }
 .run-box:not(:empty) { margin-top: 16px; }
 .btn.run { font-size: 16px; padding: 12px 32px; }
-.live { display: flex; flex-direction: column; gap: 8px; }
-.live h3 { font-size: 16px; font-weight: 600; }
-.live td { font-size: 13px; padding: 5px 8px; }
-.live .code { font-size: 12px; }
-.live tr.lv-acs td { border-bottom-width: 2px; }
-.live tr.lv-on td { background: #c6efce; color: #14532d; font-weight: 700; }
 
 /* Step 4: marked-up spreadsheets */
 .marked { margin-top: 24px; background: var(--surface); border: 2px solid var(--ink); border-radius: var(--radius); padding: 18px 20px; display: flex; flex-direction: column; gap: 14px; }
@@ -676,7 +667,7 @@ details[open] > summary { margin-bottom: 10px; }
   const $ = (id) => document.getElementById(id);
   const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
 
-  const state = { acs: null, suppliers: [], active: 0, errors: [], cross: null, suggestFor: new Map(), queue: [], pos: 0, decisions: new Map(), ran: false, history: [] };
+  const state = { acs: null, suppliers: [], active: 0, errors: [], cross: null, suggestFor: new Map(), queue: [], pos: 0, decisions: new Map(), ran: false };
   let downloads = null;
 
   // ---------- formatting ----------
@@ -706,8 +697,8 @@ details[open] > summary { margin-bottom: 10px; }
 
   // New files mean a new check: nothing shows until Run check is pressed
   const ready = () => state.ran && state.acs && state.suppliers.length;
-  function notRun() { state.ran = false; state.cross = null; state.queue = []; state.history = []; }
-  function runCheck() { rerun(); state.ran = true; state.history = []; state.focusReview = true; render(); }
+  function notRun() { state.ran = false; state.cross = null; state.queue = []; }
+  function runCheck() { rerun(); state.ran = true; state.focusReview = true; render(); }
 
   function rerun() {
     state.acsSave = null;
@@ -744,7 +735,6 @@ details[open] > summary { margin-bottom: 10px; }
     if (!p) return;
     const wasDone = state.queue.every(decisionOf);
     state.decisions.set(p.id, v);
-    state.history = [p, ...state.history.filter((h) => h !== p)].slice(0, 4);
     saveDecisions();
     state.acsSave = null; for (const s of state.suppliers) s.saveState = null;
     state.pos = nextWaiting(state.pos + 1);
@@ -1029,21 +1019,32 @@ details[open] > summary { margin-bottom: 10px; }
   }
 
   // ---------- step 3: one pairing at a time ----------
-  const KIND = { match: "Same plant code on both", suggest: "Suggested: plant code not on the ACS report", zero: "£0 end pass: £0 ACS line found on a supplier report" };
   const lineDecision = (m) => { const p = state.queue.find((q) => q.line === m); return p ? decisionOf(p) : null; };
   const decisionPill = (d) => d === "approved" ? `<span class="pill ok">Approved</span>` : d === "rejected" ? `<span class="pill flag">Rejected</span>` : `<span class="pill warn">Waiting</span>`;
-  const field = (k, v) => v ? `<div class="rv-f"><dt>${k}</dt><dd>${v}</dd></div>` : "";
+  const reviewing = () => state.cross && state.queue.length && state.pos < state.queue.length;
+  const near = (a, b) => Math.abs(a - b) < 0.005;
+  const shortName = (name) => name.replace(/\.xlsx?m?$/i, "");
+  const missing = `<span class="pc-none">Not given</span>`;
 
-  // Live mark-up: the last pairings you answered, shown as they now look on the two copies
-  function liveView() {
-    if (!state.history.length) return "";
-    const rows = state.history.map((p) => {
-      const d = decisionOf(p), f = p.line, cls = d === "approved" ? "lv-on" : "";
-      const a = p.items[0];
-      return `<tr class="${cls}"><td>Supplier<br>${decisionPill(d)}</td><td class="code">row ${f.row}</td><td class="code">${esc(f.raw)}</td><td>${esc(f.desc)}</td></tr>
-        <tr class="${cls} lv-acs"><td>ACS</td><td class="code">${esc(a ? a.cell : p.acsAt[0])}</td><td class="code">${esc(a ? a.assetText : f.raw)}</td><td>${esc(a ? a.desc : "")}</td></tr>`;
-    }).join("");
-    return `<div class="live"><h3>Live mark-up</h3><div class="table-wrap"><table><tbody>${rows}</tbody></table></div></div>`;
+  // The four things checked on every pairing: item, cost, company, on-hire date. ok: true agree, false don't (or missing).
+  function checks(p) {
+    const f = p.line, a = p.items[0] || {};
+    const sup = state.suppliers.find((s) => s.name === f.supplier);
+    const company = sup && sup.result.company;
+    const fr = E.money(f.rate), ar = a.zero ? 0 : a.rate;
+    const fw = E.words(f.desc), sameWord = [...E.words(a.desc || "")].some((w) => fw.has(w));
+    const item = (name, code) => `${name ? esc(name) : missing}${code ? `<span class="pc-code">${esc(code)}</span>` : ""}`;
+    const cost = (v, qty) => v == null ? missing : `£${v.toFixed(2)}${qty > 1 ? ` <small>× ${qty}</small>` : ""}`;
+    return [
+      { k: "Item", s: item(f.desc, f.raw), a: item(a.desc, a.assetText || p.acsAt.join(", ")),
+        ok: !!(f.desc && a.desc) && (p.kind === "match" || sameWord) },
+      { k: "Cost", s: cost(fr, f.qty), a: cost(ar, a.qty),
+        ok: fr != null && ar != null && (near(fr, ar) || near(fr * (a.qty || 1), ar) || near(fr * (f.qty || 1), ar)) },
+      { k: "Company", s: esc(company || shortName(f.supplier)), a: a.company ? esc(a.company) : missing,
+        ok: !!(company && a.company && company.toLowerCase() === a.company.toLowerCase()) },
+      { k: "On hire", s: f.date ? fmtDate(f.date) : missing, a: a.date ? fmtDate(a.date) : missing,
+        ok: !!(f.date && a.date && f.date === a.date) },
+    ];
   }
 
   function renderReview() {
@@ -1051,47 +1052,30 @@ details[open] > summary { margin-bottom: 10px; }
     if (!state.cross) { box.innerHTML = ""; return; }
     const q = state.queue, n = q.length;
     const done = q.filter((p) => decisionOf(p)).length;
-    const yes = approved().length, no = done - yes;
-    const head = `<div class="rv-head"><div><span class="step">Step 3</span><h2>Check each pairing</h2>
-      <p class="sg-note">Approved lines go green and bold on both reports.</p></div>
-      <div class="rv-count"><b>${done}</b> of ${n} checked · ${yes} approved · ${no} rejected</div></div>
-      <div class="rv-bar" aria-hidden="true"><span style="width:${n ? (100 * done / n) : 0}%"></span></div>`;
-
-    if (!n) { box.innerHTML = `<section class="review">${head}<p class="empty">No pairings found between the supplier reports and the ACS report.</p></section>`; return; }
+    if (!n) { box.innerHTML = `<section class="review"><p class="empty">No pairings found between the supplier reports and the ACS report.</p></section>`; return; }
 
     if (state.pos >= n) {
-      const first = nextWaiting(0);
-      box.innerHTML = `<section class="review">${head}
-        <div class="rv-done"><p>${done === n ? `<b>Every pairing is checked.</b> The marked-up copies are in step 4.` : `<b>${plural(n - done, "pairing")} skipped</b>, not marked.`}</p>
-        <div class="rv-actions">${first < n ? `<button class="btn" id="rvFirst">Go to the first waiting one</button>` : ""}<button class="btn" id="rvAgain">Go through again</button></div></div>${liveView()}</section>`;
+      const first = nextWaiting(0), yes = approved().length;
+      box.innerHTML = `<section class="review rv-done">
+        <p>${done === n ? `<b>All ${n} checked.</b> ${yes} approved, ${done - yes} rejected.` : `<b>${plural(n - done, "pairing")} skipped.</b>`}</p>
+        <div class="rv-actions">${first < n ? `<button class="btn" id="rvFirst">Finish the skipped ones</button>` : ""}<button class="btn" id="rvAgain">Go through again</button></div></section>`;
       if ($("rvFirst")) $("rvFirst").addEventListener("click", () => { state.pos = first; state.focusReview = true; render(); });
       $("rvAgain").addEventListener("click", () => { state.pos = 0; state.focusReview = true; render(); });
       return;
     }
 
-    const p = q[state.pos], f = p.line, d = decisionOf(p);
-    const sup = `<div class="rv-side"><h3>Supplier report</h3><p class="rv-src">${esc(f.supplier)} · ${esc(f.sheet)} row ${f.row}</p><dl>
-      ${field("Plant code", `<span class="code">${esc(f.raw)}</span>`)}${field("Plant", esc(f.desc))}
-      ${field("On hire", fmtDate(f.date))}${field("Rate", fmtRate(f.rate))}${f.qty > 1 ? field("Quantity", f.qty) : ""}</dl></div>`;
-    const acsItem = (a) => `<dl>${field("ACS cell", `<span class="code">${esc(a.cell)}</span>`)}${field("Job sheet", esc(a.sheet))}
-      ${field("Asset no.", `<span class="code">${esc(a.assetText)}</span>`)}${field("Plant", esc(a.desc))}${field("Supplier", esc(a.company))}
-      ${field("On hire", fmtDate(a.date))}${field("ACS rate", a.zero ? "£0" : fmtRate(a.rate))}${a.offHire ? field("Status", "Off-hire") : ""}</dl>`;
-    const acs = `<div class="rv-side"><h3>ACS report</h3><p class="rv-src">${esc(state.acs.name)}</p>
-      ${p.items.length ? p.items.map(acsItem).join("") : `<dl>${field("Found at", p.acsAt.map((c) => `<span class="code">${esc(c)}</span>`).join("<br>"))}</dl>`}</div>`;
-
-    box.innerHTML = `<section class="review">${head}
-      <div class="rv-card">
-        <div class="rv-top"><span class="rv-kind ${p.kind}">${KIND[p.kind]}</span><span class="rv-pos">Pairing ${state.pos + 1} of ${n} ${d ? decisionPill(d) : ""}</span></div>
-        <div class="rv-pair">${sup}${acs}</div>
-        ${p.reasons.length ? `<p class="rv-why"><b>Why it's suggested:</b> ${esc(sentence(p.reasons))}.</p>` : ""}
-        <div class="rv-actions">
-          <button class="btn" id="rvYes">Approve</button>
-          <button class="btn" id="rvNo">Reject</button>
-          <button class="btn" id="rvSkip">Skip</button>
-          <button class="btn" id="rvBack" ${state.pos ? "" : "disabled"}>Back</button>
-          <span class="rv-keys">Keys: A approve · R reject · → skip · ← back</span>
-        </div>
-      </div>${liveView()}</section>`;
+    const p = q[state.pos], d = decisionOf(p);
+    const rows = checks(p).map((c) => `<tr class="${c.ok ? "pc-ok" : "pc-bad"}"><th>${c.k}</th><td>${c.s}</td><td>${c.a}</td><td class="pc-mark">${c.ok ? "✓" : "✗"}</td></tr>`).join("");
+    box.innerHTML = `<section class="review">
+      <div class="rv-top"><span class="rv-pos"><b>${state.pos + 1}</b> of ${n}</span>${p.kind !== "match" ? `<span class="rv-kind">Different code</span>` : ""}${d ? decisionPill(d) : ""}</div>
+      <div class="rv-bar" aria-hidden="true"><span style="width:${100 * done / n}%"></span></div>
+      <table class="pc"><thead><tr><th></th><th>Supplier</th><th>ACS</th><th></th></tr></thead><tbody>${rows}</tbody></table>
+      <div class="rv-actions">
+        <button class="btn big" id="rvYes">Approve <kbd>A</kbd></button>
+        <button class="btn big" id="rvNo">Reject <kbd>R</kbd></button>
+        <button class="btn" id="rvBack" ${state.pos ? "" : "disabled"}>Back</button>
+        <button class="btn" id="rvSkip">Skip</button>
+      </div></section>`;
     $("rvYes").addEventListener("click", () => decide("approved"));
     $("rvNo").addEventListener("click", () => decide("rejected"));
     $("rvSkip").addEventListener("click", () => move(1));
@@ -1102,7 +1086,10 @@ details[open] > summary { margin-bottom: 10px; }
     document.body.classList.toggle("empty", !(state.acs && state.suppliers.length));
     $("runBox").innerHTML = state.acs && state.suppliers.length && !state.ran ? `<button class="btn run" id="runCheck">Run check</button>` : "";
     if ($("runCheck")) $("runCheck").addEventListener("click", runCheck);
-    renderFiles(); renderNotices(); renderSuggestions(); renderReview(); renderMarked(); renderTabs(); renderResult();
+    renderFiles(); renderNotices(); renderReview();
+    document.body.classList.toggle("checking", !!reviewing());
+    if (reviewing()) { for (const id of ["suggest", "marked", "tabs", "result"]) $(id).innerHTML = ""; }
+    else { renderSuggestions(); renderMarked(); renderTabs(); renderResult(); }
     if (state.focusReview) {
       state.focusReview = false;
       const b = $("rvYes") || $("rvFirst") || $("rvAgain");

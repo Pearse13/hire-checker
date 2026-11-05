@@ -76,6 +76,10 @@ button, select, input { font: inherit; color: inherit; }
 @media (max-width: 720px) { .inputs { grid-template-columns: 1fr; } }
 .drop { position: relative; background: var(--surface); border: 2px dashed var(--line); border-radius: var(--radius); padding: 22px 20px; display: flex; flex-direction: column; align-items: center; text-align: center; gap: 8px; transition: border-color .15s, background-color .15s; }
 .drop.over { border-color: var(--focus); }
+body.checking .inputs { gap: 8px; }
+body.checking .drop { padding: 8px 12px; gap: 0; }
+body.checking .drop :is(.step, h2, p, .pick, .files small) { display: none; }
+body.checking .drop .files { font-size: 13px; }
 .drop.filled { border-style: solid; }
 .drop .step { font-size: 12px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.08em; color: var(--muted); }
 .drop h2 { font-size: 19px; font-weight: 600; }
@@ -157,47 +161,34 @@ tr.matched td { background: var(--ok-fill); color: var(--ok-ink); font-weight: 6
 .sg-list .code { font-size: 13px; white-space: normal; overflow-wrap: anywhere; }
 
 /* Step 3: check each pairing, one at a time */
-.review { margin-top: 24px; background: var(--surface); border: 2px solid var(--ink); border-radius: var(--radius); padding: 18px 20px; display: flex; flex-direction: column; gap: 14px; }
-.rv-head { display: flex; flex-wrap: wrap; gap: 8px 24px; align-items: flex-end; justify-content: space-between; }
-.rv-head .step { font-size: 12px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.08em; color: var(--muted); }
-.rv-head h2 { font-size: 19px; font-weight: 600; }
-.rv-count { font-size: 14px; color: var(--muted); font-variant-numeric: tabular-nums; }
-.rv-count b { font-family: var(--display); font-size: 22px; color: var(--ink); }
-.rv-bar { height: 6px; background: var(--bg); border-radius: 999px; overflow: hidden; }
+.review { margin: 24px auto 0; max-width: 640px; width: 100%; background: var(--surface); border: 2px solid var(--ink); border-radius: var(--radius); padding: 16px; display: flex; flex-direction: column; gap: 12px; }
+.rv-top { display: flex; gap: 10px; align-items: center; }
+.rv-pos { font-size: 14px; color: var(--muted); font-variant-numeric: tabular-nums; }
+.rv-pos b { font-family: var(--display); font-size: 22px; color: var(--ink); }
+.rv-kind { font-size: 12px; font-weight: 700; padding: 2px 8px; border-radius: 4px; background: var(--warn-fill); color: var(--warn); }
+.rv-bar { height: 5px; background: var(--bg); border-radius: 999px; overflow: hidden; }
 .rv-bar span { display: block; height: 100%; background: var(--ok); transition: width .2s; }
-.rv-card { border: 1px solid var(--line); border-radius: var(--radius); padding: 16px; display: flex; flex-direction: column; gap: 14px; }
-.rv-top { display: flex; flex-wrap: wrap; gap: 6px 14px; justify-content: space-between; align-items: center; }
-.rv-kind { font-size: 13px; font-weight: 700; padding: 2px 10px; border-radius: 4px; background: var(--ok-fill); color: var(--ok-ink); }
-.rv-kind.suggest, .rv-kind.zero { background: var(--warn-fill); color: var(--warn); }
-.rv-pos { font-size: 13px; color: var(--muted); display: flex; gap: 8px; align-items: center; }
-.rv-pair { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
-@media (max-width: 720px) { .rv-pair { grid-template-columns: 1fr; } }
-.rv-side { background: var(--bg); border-radius: 4px; padding: 12px 14px; min-width: 0; }
-.rv-side h3 { font-size: 16px; font-weight: 600; }
-.rv-src { margin: 2px 0 8px; font-size: 13px; color: var(--muted); overflow-wrap: anywhere; }
-.rv-side dl { margin: 0; display: flex; flex-direction: column; gap: 4px; }
-.rv-side dl + dl { margin-top: 10px; padding-top: 10px; border-top: 1px solid var(--line); }
-.rv-f { display: grid; grid-template-columns: 92px 1fr; gap: 10px; font-size: 14px; }
-.rv-f dt { color: var(--muted); font-size: 13px; }
-.rv-f dd { margin: 0; min-width: 0; overflow-wrap: anywhere; }
-.rv-f .code { white-space: normal; overflow-wrap: anywhere; font-weight: 500; }
-.rv-why { margin: 0; font-size: 14px; }
+.pc { width: 100%; border-collapse: collapse; table-layout: fixed; }
+.pc thead th { font-size: 12px; text-transform: uppercase; letter-spacing: .06em; color: var(--muted); text-align: left; padding: 0 8px 6px; }
+.pc thead th:first-child { width: 78px; } .pc thead th:last-child { width: 32px; }
+.pc tbody th { text-align: left; font-size: 13px; color: var(--muted); font-weight: 600; padding: 10px 8px; vertical-align: top; }
+.pc td { padding: 10px 8px; font-size: 15px; vertical-align: top; overflow-wrap: anywhere; border-top: 1px solid var(--line); }
+.pc tbody th { border-top: 1px solid var(--line); }
+.pc-code { display: block; font-family: var(--mono, ui-monospace, monospace); font-size: 12px; color: var(--muted); margin-top: 2px; }
+.pc-none { color: var(--flag); font-style: italic; }
+.pc-mark { font-size: 18px; font-weight: 700; text-align: center; }
+.pc-ok .pc-mark { color: var(--ok); }
+.pc-bad td, .pc-bad th { background: var(--flag-fill, #fde8e8); }
+.pc-bad .pc-mark { color: var(--flag); }
 .rv-actions { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
-.rv-actions .btn { min-width: 92px; padding-block: 10px; }
-.rv-keys { font-size: 12px; color: var(--muted); margin-left: auto; }
-@media (hover: none) { .rv-keys { display: none; } }
-.rv-done { display: flex; flex-direction: column; gap: 10px; }
+.rv-actions .btn { padding-block: 10px; }
+.rv-actions .btn.big { flex: 1 1 140px; padding-block: 14px; font-size: 16px; }
+.rv-actions kbd { font: inherit; font-size: 12px; opacity: .7; margin-left: 4px; }
+@media (hover: none) { .rv-actions kbd { display: none; } }
 .rv-done p { margin: 0; }
-
 .run-box { display: flex; justify-content: center; }
 .run-box:not(:empty) { margin-top: 16px; }
 .btn.run { font-size: 16px; padding: 12px 32px; }
-.live { display: flex; flex-direction: column; gap: 8px; }
-.live h3 { font-size: 16px; font-weight: 600; }
-.live td { font-size: 13px; padding: 5px 8px; }
-.live .code { font-size: 12px; }
-.live tr.lv-acs td { border-bottom-width: 2px; }
-.live tr.lv-on td { background: #c6efce; color: #14532d; font-weight: 700; }
 
 /* Step 4: marked-up spreadsheets */
 .marked { margin-top: 24px; background: var(--surface); border: 2px solid var(--ink); border-radius: var(--radius); padding: 18px 20px; display: flex; flex-direction: column; gap: 14px; }

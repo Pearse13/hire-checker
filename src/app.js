@@ -3,7 +3,7 @@
   const $ = (id) => document.getElementById(id);
   const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
 
-  const state = { acs: null, suppliers: [], active: 0, errors: [], cross: null, suggestFor: new Map(), queue: [], pos: 0, decisions: new Map(), ran: false, history: [] };
+  const state = { acs: null, suppliers: [], active: 0, errors: [], cross: null, suggestFor: new Map(), queue: [], pos: 0, decisions: new Map(), ran: false };
   let downloads = null;
 
   // ---------- formatting ----------
@@ -33,8 +33,8 @@
 
   // New files mean a new check: nothing shows until Run check is pressed
   const ready = () => state.ran && state.acs && state.suppliers.length;
-  function notRun() { state.ran = false; state.cross = null; state.queue = []; state.history = []; }
-  function runCheck() { rerun(); state.ran = true; state.history = []; state.focusReview = true; render(); }
+  function notRun() { state.ran = false; state.cross = null; state.queue = []; }
+  function runCheck() { rerun(); state.ran = true; state.focusReview = true; render(); }
 
   function rerun() {
     state.acsSave = null;
@@ -71,7 +71,6 @@
     if (!p) return;
     const wasDone = state.queue.every(decisionOf);
     state.decisions.set(p.id, v);
-    state.history = [p, ...state.history.filter((h) => h !== p)].slice(0, 4);
     saveDecisions();
     state.acsSave = null; for (const s of state.suppliers) s.saveState = null;
     state.pos = nextWaiting(state.pos + 1);
@@ -356,21 +355,32 @@
   }
 
   // ---------- step 3: one pairing at a time ----------
-  const KIND = { match: "Same plant code on both", suggest: "Suggested: plant code not on the ACS report", zero: "£0 end pass: £0 ACS line found on a supplier report" };
   const lineDecision = (m) => { const p = state.queue.find((q) => q.line === m); return p ? decisionOf(p) : null; };
   const decisionPill = (d) => d === "approved" ? `<span class="pill ok">Approved</span>` : d === "rejected" ? `<span class="pill flag">Rejected</span>` : `<span class="pill warn">Waiting</span>`;
-  const field = (k, v) => v ? `<div class="rv-f"><dt>${k}</dt><dd>${v}</dd></div>` : "";
+  const reviewing = () => state.cross && state.queue.length && state.pos < state.queue.length;
+  const near = (a, b) => Math.abs(a - b) < 0.005;
+  const shortName = (name) => name.replace(/\.xlsx?m?$/i, "");
+  const missing = `<span class="pc-none">Not given</span>`;
 
-  // Live mark-up: the last pairings you answered, shown as they now look on the two copies
-  function liveView() {
-    if (!state.history.length) return "";
-    const rows = state.history.map((p) => {
-      const d = decisionOf(p), f = p.line, cls = d === "approved" ? "lv-on" : "";
-      const a = p.items[0];
-      return `<tr class="${cls}"><td>Supplier<br>${decisionPill(d)}</td><td class="code">row ${f.row}</td><td class="code">${esc(f.raw)}</td><td>${esc(f.desc)}</td></tr>
-        <tr class="${cls} lv-acs"><td>ACS</td><td class="code">${esc(a ? a.cell : p.acsAt[0])}</td><td class="code">${esc(a ? a.assetText : f.raw)}</td><td>${esc(a ? a.desc : "")}</td></tr>`;
-    }).join("");
-    return `<div class="live"><h3>Live mark-up</h3><div class="table-wrap"><table><tbody>${rows}</tbody></table></div></div>`;
+  // The four things checked on every pairing: item, cost, company, on-hire date. ok: true agree, false don't (or missing).
+  function checks(p) {
+    const f = p.line, a = p.items[0] || {};
+    const sup = state.suppliers.find((s) => s.name === f.supplier);
+    const company = sup && sup.result.company;
+    const fr = E.money(f.rate), ar = a.zero ? 0 : a.rate;
+    const fw = E.words(f.desc), sameWord = [...E.words(a.desc || "")].some((w) => fw.has(w));
+    const item = (name, code) => `${name ? esc(name) : missing}${code ? `<span class="pc-code">${esc(code)}</span>` : ""}`;
+    const cost = (v, qty) => v == null ? missing : `£${v.toFixed(2)}${qty > 1 ? ` <small>× ${qty}</small>` : ""}`;
+    return [
+      { k: "Item", s: item(f.desc, f.raw), a: item(a.desc, a.assetText || p.acsAt.join(", ")),
+        ok: !!(f.desc && a.desc) && (p.kind === "match" || sameWord) },
+      { k: "Cost", s: cost(fr, f.qty), a: cost(ar, a.qty),
+        ok: fr != null && ar != null && (near(fr, ar) || near(fr * (a.qty || 1), ar) || near(fr * (f.qty || 1), ar)) },
+      { k: "Company", s: esc(company || shortName(f.supplier)), a: a.company ? esc(a.company) : missing,
+        ok: !!(company && a.company && company.toLowerCase() === a.company.toLowerCase()) },
+      { k: "On hire", s: f.date ? fmtDate(f.date) : missing, a: a.date ? fmtDate(a.date) : missing,
+        ok: !!(f.date && a.date && f.date === a.date) },
+    ];
   }
 
   function renderReview() {
@@ -378,47 +388,30 @@
     if (!state.cross) { box.innerHTML = ""; return; }
     const q = state.queue, n = q.length;
     const done = q.filter((p) => decisionOf(p)).length;
-    const yes = approved().length, no = done - yes;
-    const head = `<div class="rv-head"><div><span class="step">Step 3</span><h2>Check each pairing</h2>
-      <p class="sg-note">Approved lines go green and bold on both reports.</p></div>
-      <div class="rv-count"><b>${done}</b> of ${n} checked · ${yes} approved · ${no} rejected</div></div>
-      <div class="rv-bar" aria-hidden="true"><span style="width:${n ? (100 * done / n) : 0}%"></span></div>`;
-
-    if (!n) { box.innerHTML = `<section class="review">${head}<p class="empty">No pairings found between the supplier reports and the ACS report.</p></section>`; return; }
+    if (!n) { box.innerHTML = `<section class="review"><p class="empty">No pairings found between the supplier reports and the ACS report.</p></section>`; return; }
 
     if (state.pos >= n) {
-      const first = nextWaiting(0);
-      box.innerHTML = `<section class="review">${head}
-        <div class="rv-done"><p>${done === n ? `<b>Every pairing is checked.</b> The marked-up copies are in step 4.` : `<b>${plural(n - done, "pairing")} skipped</b>, not marked.`}</p>
-        <div class="rv-actions">${first < n ? `<button class="btn" id="rvFirst">Go to the first waiting one</button>` : ""}<button class="btn" id="rvAgain">Go through again</button></div></div>${liveView()}</section>`;
+      const first = nextWaiting(0), yes = approved().length;
+      box.innerHTML = `<section class="review rv-done">
+        <p>${done === n ? `<b>All ${n} checked.</b> ${yes} approved, ${done - yes} rejected.` : `<b>${plural(n - done, "pairing")} skipped.</b>`}</p>
+        <div class="rv-actions">${first < n ? `<button class="btn" id="rvFirst">Finish the skipped ones</button>` : ""}<button class="btn" id="rvAgain">Go through again</button></div></section>`;
       if ($("rvFirst")) $("rvFirst").addEventListener("click", () => { state.pos = first; state.focusReview = true; render(); });
       $("rvAgain").addEventListener("click", () => { state.pos = 0; state.focusReview = true; render(); });
       return;
     }
 
-    const p = q[state.pos], f = p.line, d = decisionOf(p);
-    const sup = `<div class="rv-side"><h3>Supplier report</h3><p class="rv-src">${esc(f.supplier)} · ${esc(f.sheet)} row ${f.row}</p><dl>
-      ${field("Plant code", `<span class="code">${esc(f.raw)}</span>`)}${field("Plant", esc(f.desc))}
-      ${field("On hire", fmtDate(f.date))}${field("Rate", fmtRate(f.rate))}${f.qty > 1 ? field("Quantity", f.qty) : ""}</dl></div>`;
-    const acsItem = (a) => `<dl>${field("ACS cell", `<span class="code">${esc(a.cell)}</span>`)}${field("Job sheet", esc(a.sheet))}
-      ${field("Asset no.", `<span class="code">${esc(a.assetText)}</span>`)}${field("Plant", esc(a.desc))}${field("Supplier", esc(a.company))}
-      ${field("On hire", fmtDate(a.date))}${field("ACS rate", a.zero ? "£0" : fmtRate(a.rate))}${a.offHire ? field("Status", "Off-hire") : ""}</dl>`;
-    const acs = `<div class="rv-side"><h3>ACS report</h3><p class="rv-src">${esc(state.acs.name)}</p>
-      ${p.items.length ? p.items.map(acsItem).join("") : `<dl>${field("Found at", p.acsAt.map((c) => `<span class="code">${esc(c)}</span>`).join("<br>"))}</dl>`}</div>`;
-
-    box.innerHTML = `<section class="review">${head}
-      <div class="rv-card">
-        <div class="rv-top"><span class="rv-kind ${p.kind}">${KIND[p.kind]}</span><span class="rv-pos">Pairing ${state.pos + 1} of ${n} ${d ? decisionPill(d) : ""}</span></div>
-        <div class="rv-pair">${sup}${acs}</div>
-        ${p.reasons.length ? `<p class="rv-why"><b>Why it's suggested:</b> ${esc(sentence(p.reasons))}.</p>` : ""}
-        <div class="rv-actions">
-          <button class="btn" id="rvYes">Approve</button>
-          <button class="btn" id="rvNo">Reject</button>
-          <button class="btn" id="rvSkip">Skip</button>
-          <button class="btn" id="rvBack" ${state.pos ? "" : "disabled"}>Back</button>
-          <span class="rv-keys">Keys: A approve · R reject · → skip · ← back</span>
-        </div>
-      </div>${liveView()}</section>`;
+    const p = q[state.pos], d = decisionOf(p);
+    const rows = checks(p).map((c) => `<tr class="${c.ok ? "pc-ok" : "pc-bad"}"><th>${c.k}</th><td>${c.s}</td><td>${c.a}</td><td class="pc-mark">${c.ok ? "✓" : "✗"}</td></tr>`).join("");
+    box.innerHTML = `<section class="review">
+      <div class="rv-top"><span class="rv-pos"><b>${state.pos + 1}</b> of ${n}</span>${p.kind !== "match" ? `<span class="rv-kind">Different code</span>` : ""}${d ? decisionPill(d) : ""}</div>
+      <div class="rv-bar" aria-hidden="true"><span style="width:${100 * done / n}%"></span></div>
+      <table class="pc"><thead><tr><th></th><th>Supplier</th><th>ACS</th><th></th></tr></thead><tbody>${rows}</tbody></table>
+      <div class="rv-actions">
+        <button class="btn big" id="rvYes">Approve <kbd>A</kbd></button>
+        <button class="btn big" id="rvNo">Reject <kbd>R</kbd></button>
+        <button class="btn" id="rvBack" ${state.pos ? "" : "disabled"}>Back</button>
+        <button class="btn" id="rvSkip">Skip</button>
+      </div></section>`;
     $("rvYes").addEventListener("click", () => decide("approved"));
     $("rvNo").addEventListener("click", () => decide("rejected"));
     $("rvSkip").addEventListener("click", () => move(1));
@@ -429,7 +422,10 @@
     document.body.classList.toggle("empty", !(state.acs && state.suppliers.length));
     $("runBox").innerHTML = state.acs && state.suppliers.length && !state.ran ? `<button class="btn run" id="runCheck">Run check</button>` : "";
     if ($("runCheck")) $("runCheck").addEventListener("click", runCheck);
-    renderFiles(); renderNotices(); renderSuggestions(); renderReview(); renderMarked(); renderTabs(); renderResult();
+    renderFiles(); renderNotices(); renderReview();
+    document.body.classList.toggle("checking", !!reviewing());
+    if (reviewing()) { for (const id of ["suggest", "marked", "tabs", "result"]) $(id).innerHTML = ""; }
+    else { renderSuggestions(); renderMarked(); renderTabs(); renderResult(); }
     if (state.focusReview) {
       state.focusReview = false;
       const b = $("rvYes") || $("rvFirst") || $("rvAgain");
