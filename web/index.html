@@ -764,7 +764,7 @@ details[open] > summary { margin-bottom: 10px; }
   const $ = (id) => document.getElementById(id);
   const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
 
-  const state = { acs: null, suppliers: [], active: 0, errors: [], cross: null, queue: [], pos: 0, decisions: new Map(), ran: false, step: 1, second: [], spos: 0, again: false };
+  const state = { acs: null, suppliers: [], active: 0, errors: [], cross: null, queue: [], pos: 0, decisions: new Map(), ran: false, step: 1, second: [], spos: 0, again: false, jobs: [], parked: new Set() };
   let downloads = null;
 
   // ---------- formatting ----------
@@ -807,6 +807,10 @@ details[open] > summary { margin-bottom: 10px; }
   function crossCheck() {
     state.cross = state.acs && state.suppliers.length ? E.crossCheck(state.acs, state.suppliers.map((s) => s.result)) : null;
     state.queue = state.cross ? E.pairings(state.acs, state.suppliers.map((s) => s.result), state.cross) : [];
+    // One job at a time, in the ACS report's sheet order
+    state.jobs = state.cross ? [...new Set([...state.acs.items.map((a) => a.sheet), ...state.queue.map(mainJob)])] : [];
+    state.queue.sort((a, b) => state.jobs.indexOf(mainJob(a)) - state.jobs.indexOf(mainJob(b)));
+    state.parked = new Set();
     state.decisions = loadDecisions();
     state.pos = nextWaiting(0);
     state.step = 1; state.second = []; state.spos = 0; state.again = false;
@@ -826,7 +830,7 @@ details[open] > summary { margin-bottom: 10px; }
   const approved = () => state.queue.filter((p) => decisionOf(p) === "approved");
   // First pairing at or after i still waiting for an answer, or the end of the queue
   function nextWaiting(i) {
-    for (let j = i; j < state.queue.length; j++) if (!decisionOf(state.queue[j])) return j;
+    for (let j = i; j < state.queue.length; j++) if (!decisionOf(state.queue[j]) && !state.parked.has(state.queue[j].id)) return j;
     return state.queue.length;
   }
   function changed() { saveDecisions(); state.acsSave = null; for (const s of state.suppliers) s.saveState = null; }
@@ -840,8 +844,22 @@ details[open] > summary { margin-bottom: 10px; }
     if (state.pos >= state.queue.length) enterSecond(true);
     show();
   }
+  // For the job on the card: approves every waiting plant-code match where item, cost, company and date all agree.
+  // Anything else stays waiting and comes up in the second look. Then on to the next job.
+  function checkAll() {
+    const job = mainJob(state.queue[state.pos]);
+    for (const p of state.queue) if (mainJob(p) === job && !decisionOf(p)) {
+      if (p.kind === "match" && !checks(p, true).bad) state.decisions.set(p.id, "approved");
+      else state.parked.add(p.id);
+    }
+    changed();
+    state.pos = nextWaiting(0);
+    if (state.pos >= state.queue.length) enterSecond(true);
+    show();
+  }
   function move(by) {
     state.pos = Math.max(0, Math.min(state.queue.length, state.pos + by));
+    if (state.pos >= state.queue.length && nextWaiting(0) >= state.queue.length) enterSecond(true);
     show();
   }
   function show() {
@@ -858,7 +876,7 @@ details[open] > summary { margin-bottom: 10px; }
     const out = [];
     const cells = new Set(state.queue.flatMap((p) => p.items.map((a) => a.cell)));
     const lines = new Set(state.queue.flatMap((p) => p.lines));
-    for (const p of state.queue) if (decisionOf(p) !== "rejected" && checks(p, true).bad) out.push({ id: "seen:p:" + p.id, type: "pairing", p });
+    for (const p of state.queue) if (!decisionOf(p) || (decisionOf(p) === "approved" && checks(p, true).bad)) out.push({ id: "seen:p:" + p.id, type: "pairing", p });
     for (const s of state.suppliers) for (const f of s.result.flagged) if (f.charged && !lines.has(f)) out.push({ id: "seen:c:" + lineKey(f), type: "charged", f, company: s.result.company });
     for (const s of state.suppliers) for (const a of s.result.notCharged) if (!cells.has(a.cell)) { cells.add(a.cell); out.push({ id: "seen:n:" + a.cell, type: "notCharged", a }); }
     for (const z of state.cross.zeroPass) if (!z.line && !cells.has(z.acs.cell)) out.push({ id: "seen:z:" + z.acs.cell, type: "zero", a: z.acs });
@@ -1245,6 +1263,7 @@ details[open] > summary { margin-bottom: 10px; }
   }
 
   const jobOf = (p) => [...new Set(p.items.length ? p.items.map((a) => a.sheet) : p.acsAt.map((c) => c.split("!")[0]))].join(", ");
+  const mainJob = (p) => p.items.length ? p.items[0].sheet : p.acsAt[0].split("!")[0];
   const bar = (at, n) => `<div class="rv-bar" aria-hidden="true"><span style="width:${n ? 100 * at / n : 0}%"></span></div>`;
 
   // The card for one pairing. hl: the second look, where what doesn't agree is highlighted
@@ -1260,7 +1279,7 @@ details[open] > summary { margin-bottom: 10px; }
         <button class="btn big" id="rvYes">Approve <kbd>A</kbd></button>
         <button class="btn big" id="rvNo">Reject <kbd>R</kbd></button>
         <button class="btn" id="rvBack" ${back ? "" : "disabled"}>Back</button>
-        ${skip ? `<button class="btn" id="rvSkip">Skip</button>` : ""}
+        ${skip ? `<button class="btn" id="rvSkip">Skip</button><button class="btn" id="rvAll">Check all ${esc(mainJob(p))}</button>` : ""}
       </div>${extra ? extra.buttons : ""}</section>`;
   }
 
@@ -1337,9 +1356,10 @@ details[open] > summary { margin-bottom: 10px; }
       wire("rvOn", () => { enterSecond(true); show(); });
       return;
     }
-    box.innerHTML = pairingCard(q[state.pos], `<b>${state.pos + 1}</b> of ${n}`, bar(done, n), false, state.pos > 0, true);
+    const job = mainJob(q[state.pos]), inJob = q.filter((p) => mainJob(p) === job);
+    box.innerHTML = pairingCard(q[state.pos], `<b>${inJob.indexOf(q[state.pos]) + 1}</b> of ${inJob.length} · job ${state.jobs.indexOf(job) + 1} of ${state.jobs.length}`, bar(done, n), false, state.pos > 0, true);
     wire("rvYes", () => decide("approved")); wire("rvNo", () => decide("rejected"));
-    wire("rvSkip", () => move(1)); wire("rvBack", () => move(-1));
+    wire("rvSkip", () => move(1)); wire("rvBack", () => move(-1)); wire("rvAll", checkAll);
   }
 
   function render() {
