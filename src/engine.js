@@ -358,34 +358,53 @@
 
   // ---------- pairings to approve one at a time (web app) ----------
   // Every plant-code match, then every suggestion with an ACS line, then the £0 end pass finds.
-  // Each pairing is one supplier line and the ACS line(s) it pairs with.
+  // Each pairing is the supplier line(s) and the ACS line(s) they pair with. An ACS line listing several
+  // assets is one pairing holding every supplier line charged for those assets, so their costs are checked together.
   function pairings(acs, results, cross) {
-    const key = (f, cells) => `${f.supplier}|${f.sheet}|${f.row}|${cells.join(";")}`;
-    const out = [];
+    const key = (lines, cells) => `${lines.map(f => `${f.supplier}|${f.sheet}|${f.row}`).join("+")}|${cells.join(";")}`;
+    const out = [], grouped = new Map();   // ACS cell -> pairing for a line listing several assets
+    const group = (a, m) => {
+      let p = grouped.get(a.cell);
+      if (!p) { p = { kind: "match", line: m, lines: [], items: [a], acsAt: [a.cell], codes: [], stand: [], reasons: [] }; grouped.set(a.cell, p); out.push(p); }
+      return p;
+    };
     for (const r of results) for (const m of r.matched) {
       const items = acs.items.filter(i => i.codes.includes(m.code));
-      out.push({ id: key(m, m.acsAt), kind: "match", line: m, items, acsAt: m.acsAt, code: m.code, reasons: [] });
+      const multi = items.filter(i => i.codes.length > 1);
+      if (!multi.length) { out.push({ id: key([m], m.acsAt), kind: "match", line: m, lines: [m], items, acsAt: m.acsAt, codes: [m.code], stand: [], reasons: [] }); continue; }
+      // A code on several such lines (a charger in each radio set): one supplier line per ACS line, in order
+      const a = multi.find(i => !(grouped.get(i.cell) || { codes: [] }).codes.includes(m.code)) || multi[0];
+      const p = group(a, m);
+      p.lines.push(m); p.codes.push(m.code);
     }
     if (cross) {
-      for (const g of cross.suggestions) if (g.acs)
-        out.push({ id: key(g.line, [g.acs.cell]), kind: "suggest", line: g.line, items: [g.acs], acsAt: [g.acs.cell], reasons: g.reasons });
+      for (const g of cross.suggestions) if (g.acs) {
+        // Suggested for an asset on a line already being checked as one: it joins that pairing
+        const p = grouped.get(g.acs.cell);
+        if (p) { p.lines.push(g.line); p.stand.push(g.line); p.reasons.push(...g.reasons); continue; }
+        out.push({ id: key([g.line], [g.acs.cell]), kind: "suggest", line: g.line, lines: [g.line], items: [g.acs], acsAt: [g.acs.cell], codes: [], stand: [g.line], reasons: g.reasons });
+      }
       for (const z of cross.zeroPass) if (z.line)
-        out.push({ id: key(z.line, [z.acs.cell]), kind: "zero", line: z.line, items: [z.acs], acsAt: [z.acs.cell], reasons: z.reasons });
+        out.push({ id: key([z.line], [z.acs.cell]), kind: "zero", line: z.line, lines: [z.line], items: [z.acs], acsAt: [z.acs.cell], codes: [], stand: [z.line], reasons: z.reasons });
     }
+    for (const p of grouped.values()) p.id = key(p.lines, p.acsAt);
     return out;
   }
 
   // ACS lines covered by approved pairings. A line listing several assets needs every one of them covered:
   // by an approved plant-code match on that asset, or by an approved suggestion standing in for one.
   function acsApprovedLines(acs, approved) {
-    const byCode = new Set(), stand = new Map();
-    for (const p of approved) {
-      if (p.kind === "match") byCode.add(p.code);
-      else stand.set(p.items[0].cell, (stand.get(p.items[0].cell) || 0) + 1);
+    const covered = new Map(), stand = new Map();
+    for (const p of approved) for (const i of p.items) {
+      const c = covered.get(i.cell) || new Set();
+      for (const code of p.codes) if (i.codes.includes(code)) c.add(code);
+      covered.set(i.cell, c);
+      stand.set(i.cell, (stand.get(i.cell) || 0) + p.stand.length);
     }
     return acs.items.filter(i => {
-      const left = i.codes.filter(c => !byCode.has(c)).length;
-      return left <= (stand.get(i.cell) || 0) && (left < i.codes.length || stand.has(i.cell));
+      if (!covered.has(i.cell)) return false;
+      const left = i.codes.filter(c => !covered.get(i.cell).has(c)).length;
+      return left <= stand.get(i.cell) && (left < i.codes.length || stand.get(i.cell) > 0);
     });
   }
 

@@ -178,6 +178,18 @@ tr.current td { box-shadow: inset 0 2px 0 var(--focus), inset 0 -2px 0 var(--foc
 .pc tbody th { border-top: 1px solid var(--line); }
 .pc-code { display: block; font-family: var(--mono, ui-monospace, monospace); font-size: 12px; color: var(--muted); margin-top: 2px; }
 .pc-none { color: var(--flag); font-style: italic; }
+.pc-lines { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 6px; }
+.pc-lines li { display: flex; justify-content: space-between; gap: 8px; font-size: 14px; }
+.pc-lines li > span:last-child { white-space: nowrap; }
+.pc-left { color: var(--flag); font-style: italic; }
+.pc-lines .rv-kind { display: inline-block; margin-top: 3px; font-size: 11px; white-space: nowrap; }
+@media (max-width: 560px) {
+  .pc thead th:first-child { width: 58px; } .pc thead th:last-child { width: 22px; }
+  .pc td, .pc tbody th { padding: 8px 4px; }
+  .pc tbody th { font-size: 11px; }
+  .pc-lines li { flex-direction: column; gap: 0; }
+}
+.pc small { font-weight: 400; font-size: 11px; }
 .pc-mark { font-size: 18px; font-weight: 700; text-align: center; }
 .pc-ok .pc-mark { color: var(--ok); }
 .pc-bad td, .pc-bad th { background: var(--flag-fill, #fde8e8); }

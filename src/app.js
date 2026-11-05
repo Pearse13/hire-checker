@@ -124,7 +124,7 @@
   const checkedName = (s) => s.name.replace(/\.xlsx?m?$/i, "") + "_checked.xlsx";
 
   // Only approved pairings are marked: the supplier line gets the ACS cell(s) it was paired with
-  const supplierMarks = (s) => approved().filter((p) => p.line.supplier === s.name).map((p) => ({ sheet: p.line.sheet, row: p.line.row, acsAt: p.acsAt }));
+  const supplierMarks = (s) => approved().flatMap((p) => p.lines.filter((f) => f.supplier === s.name).map((f) => ({ sheet: f.sheet, row: f.row, acsAt: f.acsAt || p.acsAt })));
   const acsLines = () => E.acsApprovedLines(state.acs, approved());
   async function buildACS() {
     const wb = new ExcelJS.Workbook();
@@ -355,8 +355,8 @@
   }
 
   // ---------- step 3: one pairing at a time ----------
-  const rowClass = (m) => [lineDecision(m) === "approved" ? "matched" : "", reviewing() && state.queue[state.pos].line === m ? "current" : ""].join(" ");
-  const lineDecision = (m) => { const p = state.queue.find((q) => q.line === m); return p ? decisionOf(p) : null; };
+  const rowClass = (m) => [lineDecision(m) === "approved" ? "matched" : "", reviewing() && state.queue[state.pos].lines.includes(m) ? "current" : ""].join(" ");
+  const lineDecision = (m) => { const p = state.queue.find((q) => q.lines.includes(m)); return p ? decisionOf(p) : null; };
   const decisionPill = (d) => d === "approved" ? `<span class="pill ok">Approved</span>` : d === "rejected" ? `<span class="pill flag">Rejected</span>` : `<span class="pill warn">Waiting</span>`;
   const reviewing = () => state.cross && state.queue.length && state.pos < state.queue.length;
   const near = (a, b) => Math.abs(a - b) < 0.005;
@@ -364,23 +364,34 @@
   const missing = `<span class="pc-none">Not given</span>`;
 
   // The four things checked on every pairing: item, cost, company, on-hire date. ok: true agree, false don't (or missing).
+  // An ACS line listing several assets is checked as one: every supplier line for those assets, costs added up.
   function checks(p) {
-    const f = p.line, a = p.items[0] || {};
-    const sup = state.suppliers.find((s) => s.name === f.supplier);
+    const ls = p.lines, a = p.items[0] || {};
+    const sup = state.suppliers.find((s) => s.name === ls[0].supplier);
     const company = sup && sup.result.company;
-    const fr = E.money(f.rate), ar = a.zero ? 0 : a.rate;
-    const fw = E.words(f.desc), sameWord = [...E.words(a.desc || "")].some((w) => fw.has(w));
-    const item = (name, code) => `${name ? esc(name) : missing}${code ? `<span class="pc-code">${esc(code)}</span>` : ""}`;
+    const rates = ls.map((f) => E.money(f.rate));
+    const fr = rates.some((r) => r == null) ? null : rates.reduce((t, r) => t + r, 0);
+    const ar = a.zero ? 0 : a.rate;
+    const fw = new Set(ls.flatMap((f) => [...E.words(f.desc)]));
+    const sameWord = [...E.words(a.desc || "")].some((w) => fw.has(w));
     const cost = (v, qty) => v == null ? missing : `£${v.toFixed(2)}${qty > 1 ? ` <small>× ${qty}</small>` : ""}`;
+    const name = (n, code) => `${n ? esc(n) : missing}${code ? `<span class="pc-code">${esc(code)}</span>` : ""}`;
+    const group = ls.length > 1 || (a.codes && a.codes.length > 1);
+    // Assets on the ACS line that this supplier hasn't charged for
+    const left = group && p.kind === "match" ? a.codes.filter((c) => !p.codes.includes(c)).slice(p.stand.length) : [];
+    const supItem = group
+      ? `<ul class="pc-lines">${ls.map((f, i) => `<li><span>${name(f.desc, f.raw)}${p.stand.includes(f) && p.kind === "match" ? `<span class="rv-kind">Different code</span>` : ""}</span><span>${cost(rates[i], f.qty)}</span></li>`).join("")}${left.map((c) => `<li class="pc-left"><span>Not charged<span class="pc-code">${esc(c)}</span></span></li>`).join("")}</ul>`
+      : name(ls[0].desc, ls[0].raw);
+    const dates = [...new Set(ls.map((f) => f.date))];
     return [
-      { k: "Item", s: item(f.desc, f.raw), a: item(a.desc, a.assetText || p.acsAt.join(", ")),
-        ok: !!(f.desc && a.desc) && (p.kind === "match" || sameWord) },
-      { k: "Cost", s: cost(fr, f.qty), a: cost(ar, a.qty),
-        ok: fr != null && ar != null && (near(fr, ar) || near(fr * (a.qty || 1), ar) || near(fr * (f.qty || 1), ar)) },
-      { k: "Company", s: esc(company || shortName(f.supplier)), a: a.company ? esc(a.company) : missing,
+      { k: "Item", s: supItem, a: name(a.desc, a.assetText || p.acsAt.join(", ")),
+        ok: ls.every((f) => f.desc) && !!a.desc && !left.length && (p.kind === "match" || sameWord) },
+      { k: group ? `Cost<br><small>total</small>` : "Cost", s: cost(fr, group ? 1 : ls[0].qty), a: cost(ar, group ? 1 : a.qty),
+        ok: fr != null && ar != null && (group ? near(fr, ar) : near(fr, ar) || near(fr * (a.qty || 1), ar) || near(fr * (ls[0].qty || 1), ar)) },
+      { k: "Company", s: esc(company || shortName(ls[0].supplier)), a: a.company ? esc(a.company) : missing,
         ok: !!(company && a.company && company.toLowerCase() === a.company.toLowerCase()) },
-      { k: "On hire", s: f.date ? fmtDate(f.date) : missing, a: a.date ? fmtDate(a.date) : missing,
-        ok: !!(f.date && a.date && f.date === a.date) },
+      { k: "On hire", s: dates.map((d) => d ? fmtDate(d) : missing).join("<br>"), a: a.date ? fmtDate(a.date) : missing,
+        ok: !!a.date && dates.length === 1 && dates[0] === a.date },
     ];
   }
 
