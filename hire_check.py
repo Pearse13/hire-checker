@@ -8,7 +8,7 @@ For each supplier report it writes SUPPLIER_checked.xlsx where:
   - lines whose plant code is on any sheet of the in-house report -> green + bold,
     with the ACS sheet and cell they matched in an added "ACS match" column
   - lines NOT on the in-house report are left untouched and listed on screen
-It also writes INHOUSE_checked.xlsx: ACS lines charged on the supplier reports -> green + bold
+It also writes INHOUSE_checked.xlsx: ACS lines charged on the supplier reports -> my green, not bold
 (the green replaces the line's own colour; other lines keep theirs).
 Once every report is checked it prints suggestions: what each unknown plant code probably is on the
 ACS report (by date, rate, quantity and description), then where the ACS report's unpaired £0 items are.
@@ -24,6 +24,7 @@ from openpyxl.utils import column_index_from_string, get_column_letter
 warnings.filterwarnings("ignore")
 
 GREEN = PatternFill("solid", start_color="C6EFCE", end_color="C6EFCE")
+ACS_GREEN = PatternFill("solid", start_color="92D050", end_color="92D050")
 NOT_CODES = {"CODE", "PLANTCODE", "PLANT", "ITEM", "ITEMCODE", "PRODUCT", "PRODUCTCODE",
              "NO", "NO.", "REF", "REFERENCE", "STOCK", "STOCKCODE", "DESCRIPTION", "QTY", "QUANTITY", "DAYS", "RATE", "CHARGE", "AMOUNT", "TOTAL", "SUBTOTAL", "VAT", "NET", "GROSS"}
 STOP = {"the", "and", "with", "for", "inc", "incl", "including", "donotuse", "set", "per", "week", "day",
@@ -375,7 +376,7 @@ def cross_check(acs, results):
 
 
 def mark_inhouse(path, acs, results):
-    """Copy of the ACS report: every plant line charged on a supplier report in green and bold.
+    """Copy of the ACS report: every plant line charged on a supplier report in my green, not bold.
     Other lines keep the report's own colours. A line listing several assets is only marked when all are charged."""
     charged = {m["code"] for r in results for m in r["matched"]}
     lines = [i for i in acs["items"] if all(c in charged for c in i["codes"])]
@@ -386,8 +387,7 @@ def mark_inhouse(path, acs, results):
             cell = ws.cell(l["row"], c)
             if isinstance(cell, MergedCell):
                 continue
-            cell.fill = GREEN
-            cell.font = cell.font.copy(bold=True)
+            cell.fill = ACS_GREEN
     base = os.path.splitext(os.path.basename(path))[0]
     out = os.path.join(os.path.dirname(os.path.abspath(path)), f"{base}_checked.xlsx")
     wb.save(out)
@@ -465,4 +465,4 @@ if __name__ == "__main__":
             print(f"{head} not found on the supplier reports checked." + (f" No {a['company']} report has been checked yet." if missing else ""))
 
     acs_out, acs_marked = mark_inhouse(inhouse, acs, results)
-    print(f"\nACS report: {acs_marked} line(s) charged on the supplier reports in green and bold -> {os.path.basename(acs_out)}")
+    print(f"\nACS report: {acs_marked} line(s) charged on the supplier reports in green -> {os.path.basename(acs_out)}")

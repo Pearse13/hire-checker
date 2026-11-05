@@ -202,8 +202,7 @@
   async function buildChecked(s) {
     const wb = new ExcelJS.Workbook();
     await wb.xlsx.load(s.buf.slice(0));
-    E.markWorkbook(wb, s.result, supplierMarks(s), lineOutcomes().filter((o) => o.supplier === s.name));
-    E.markMissing(wb, supplierMissing(s));
+    E.markWorkbook(wb, s.result, supplierMarks(s), supplierNotes(s));
     const out = await wb.xlsx.writeBuffer();
     return new Blob([out], { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" });
   }
@@ -212,33 +211,56 @@
   // Only approved pairings are marked: the supplier line gets the ACS cell(s) it was paired with
   const supplierMarks = (s) => approved().flatMap((p) => p.lines.filter((f) => f.supplier === s.name).map((f) => ({ sheet: f.sheet, row: f.row, acsAt: f.acsAt || p.acsAt })));
   const acsLines = () => E.acsApprovedLines(state.acs, approved());
-  // Second-look outcomes, for the Outcome column on each copy
+  // Second-look outcomes, for the notes on each copy
   const withOutcome = () => state.second.map((it) => ({ it, text: state.decisions.get("outcome:" + it.id) })).filter((o) => o.text);
   const lineOutcomes = () => withOutcome().flatMap(({ it, text }) => (it.p ? it.p.lines : it.f ? [it.f] : []).map((f) => ({ supplier: f.supplier, sheet: f.sheet, row: f.row, text })));
   const itemOutcomes = () => withOutcome().flatMap(({ it, text }) => (it.p ? it.p.items : it.a ? [it.a] : []).map((item) => ({ item, text })));
   const costText = (v) => `£${(v || 0).toFixed(2)}`;
-  // Charged lines not on the ACS report, unless an approved pairing covers them
-  function supplierMissing(s) {
+  // Notes column on a supplier copy: what happened, and charged lines missing from the ACS report (amber)
+  function supplierNotes(s) {
     const paired = new Set(approved().flatMap((p) => p.lines));
-    return s.result.flagged.filter((f) => f.charged && !paired.has(f)).map((f) => ({ sheet: f.sheet, row: f.row, width: s.result.sheets.find((x) => x.title === f.sheet).width,
-      text: `Row ${f.row}: ${f.raw} ${f.desc}, ${costText(E.money(f.rate))}: not on the ACS report.` }))
-      .concat(state.queue.filter((p) => stillCharged(p) && decisionOf(p) !== "approved").flatMap((p) => p.lines).filter((f) => f.supplier === s.name && f.charged)
-        .map((f) => ({ sheet: f.sheet, row: f.row, width: s.result.sheets.find((x) => x.title === f.sheet).width, text: `Row ${f.row}: ${f.raw} ${f.desc}, ${costText(E.money(f.rate))}: off-hire on ACS, still being charged.` })));
+    const off = state.queue.filter((p) => stillCharged(p) && decisionOf(p) !== "approved").flatMap((p) => p.lines).filter((f) => f.supplier === s.name && f.charged);
+    return lineOutcomes().filter((o) => o.supplier === s.name)
+      .concat(chargedNotOnACS(s).filter((f) => !paired.has(f)).map((f) => ({ sheet: f.sheet, row: f.row, text: "Not on the ACS report", amber: true })))
+      .concat(off.map((f) => ({ sheet: f.sheet, row: f.row, text: "Off-hire on ACS, still being charged", amber: true })));
   }
-  // ACS lines not on their supplier's report, and £0 lines not found on any report, unless they've been marked
-  function acsMissing() {
-    const marked = new Set(acsLines().map((a) => a.cell)), lines = new Map();
-    const add = (a, codes, why) => { if (!marked.has(a.cell) && !lines.has(a.cell)) lines.set(a.cell, { sheet: a.sheet, row: a.row, width: a.width, text: `Row ${a.row}: ${codes} ${a.desc}, ${costText(a.rate)}: ${why}.` }); };
-    for (const s of state.suppliers) for (const a of s.result.notCharged) add(a, a.missing.length === a.codes.length ? a.assetText : a.missing.join(", "), `not on the ${a.company} report`);
-    for (const p of state.queue) if (stillCharged(p) && decisionOf(p) !== "approved") for (const a of p.items) add(a, a.assetText, "off-hire, but still being charged");
-    for (const z of state.cross.zeroPass) if (!z.line) add(z.acs, z.acs.assetText, "not found on a supplier report");
-    return [...lines.values()];
+  const chargedNotOnACS = (s) => s.result.flagged.filter((f) => f.charged);
+  // ACS copy, coloured like my own report. Red: a problem to chase. Amber: a query, or not answered yet. Each with a note beside the line.
+  function acsNotes() {
+    const green = new Set(acsLines().map((a) => a.cell)), lines = new Map();
+    const add = (a, colour, text) => {
+      if (!lines.has(a.cell)) lines.set(a.cell, { a, colours: new Set(), texts: new Set() });
+      const l = lines.get(a.cell);
+      if (colour && !green.has(a.cell)) l.colours.add(colour);
+      if (!(green.has(a.cell) && colour)) l.texts.add(text);
+    };
+    for (const p of state.queue) {
+      const d = decisionOf(p), c = checks(p, true);
+      if (d === "approved" || !c.item || (d === "rejected" && p.kind !== "match")) continue;
+      if (stillCharged(p)) for (const a of p.items) add(a, "red", "Off-hire, still being charged");
+      else if (!c.rows[1].ok) add(c.item, "red", `Supplier ${costText(lineTotal(p.line))}, ACS ${costText(c.item.rate)}`);
+      else if (d === "rejected") add(c.item, "red", "Rejected");
+      else add(c.item, "amber", "Not checked");
+    }
+    for (const s of state.suppliers) for (const a of s.result.notCharged) add(a, "red", `Not on the ${a.company} report${a.missing.length < a.codes.length ? `: ${a.missing.join(", ")}` : ""}`);
+    for (const z of state.cross.zeroPass) if (!z.line && !lines.has(z.acs.cell)) add(z.acs, "red", "Not found on a supplier report");
+    for (const { item, text } of itemOutcomes()) { add(item, /^Query/.test(text) ? "query" : null, text); if (green.has(item.cell)) lines.get(item.cell).texts.add(text); }
+    return [...lines.values()].filter((l) => l.texts.size).map(({ a, colours, texts }) => ({ sheet: a.sheet, row: a.row, width: a.width, colour: colours.has("query") ? "amber" : colours.has("red") ? "red" : colours.has("amber") ? "amber" : null, text: [...texts].join("; ") }));
+  }
+  // Charged plant with no line on the ACS report: a red line on the job its neighbours on the supplier report belong to
+  function acsAdded() {
+    const paired = new Set(approved().flatMap((p) => p.lines));
+    return state.suppliers.flatMap((s) => chargedNotOnACS(s).filter((f) => !paired.has(f)).map((f) => {
+      const near = s.result.matched.filter((m) => m.sheet === f.sheet).sort((x, y) => Math.abs(x.row - f.row) - Math.abs(y.row - f.row))[0];
+      const sheet = near ? near.jobs[0] : state.jobs[0];
+      const item = state.acs.items.find((a) => a.sheet === sheet) || state.acs.items[0];
+      return { sheet, cols: item.cols, desc: f.desc, company: s.result.company || shortName(s.name), code: f.raw, date: f.date ? fmtDate(f.date) : "", rate: E.money(f.rate), text: "Charged, not on the ACS report" };
+    }));
   }
   async function buildACS() {
     const wb = new ExcelJS.Workbook();
     await wb.xlsx.load(state.acs.buf.slice(0));
-    E.markACS(wb, acsLines(), itemOutcomes());
-    E.markMissing(wb, acsMissing());
+    E.markACS(wb, acsLines(), acsNotes(), acsAdded());
     return new Blob([await wb.xlsx.writeBuffer()], { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" });
   }
 
@@ -539,7 +561,7 @@
       { k: "Cost", s: `${cost(fr, ls[0].qty)}${others.length ? `<span class="pc-code">${fr ? "With" : "Cost on"} row${others.length > 1 ? "s" : ""} ${others.map((f) => f.row).join(", ")}: £${ar.toFixed(2)}</span>` : ""}`, a: `${cost(ar, 1)}${parts > 1 ? ` <small>for ${parts}</small>` : ""}`, ok: !!hit },
       ...rest,
     ];
-    return { rows, bad: !rows[1].ok || stillCharged(p) };
+    return { rows, item: a.cell ? a : null, bad: !rows[1].ok || stillCharged(p) };
   }
 
   const jobOf = (p) => [...new Set(p.items.length ? p.items.map((a) => a.sheet) : p.acsAt.map((c) => c.split("!")[0]))].join(", ");

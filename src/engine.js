@@ -146,7 +146,7 @@
         const status = cols.status >= 0 ? text(row[cols.status]) : "";
         const rate = cols.rate >= 0 ? money(row[cols.rate]) : null;
         items.push({
-          sheet: sh.title, row: r + 1, codes: parts, width: cols.width, headerRow: cols.headerRow,
+          sheet: sh.title, row: r + 1, codes: parts, width: cols.width, headerRow: cols.headerRow, cols,
           cell: `${sh.title}!${colLetter(cols.asset)}${r + 1}`,
           assetText: text(row[cols.asset]), company: comp, desc,
           date: cols.date >= 0 ? dayKey(row[cols.date]) : null,
@@ -332,43 +332,19 @@
   }
 
   // ---------- marked-up copies ----------
-  const GREEN = { type: "pattern", pattern: "solid", fgColor: { argb: "FFC6EFCE" }, bgColor: { argb: "FFC6EFCE" } };
-  const AMBER = { type: "pattern", pattern: "solid", fgColor: { argb: "FFFFEB9C" } };
+  const solid = (argb) => ({ type: "pattern", pattern: "solid", fgColor: { argb }, bgColor: { argb } });
+  const GREEN = solid("FFC6EFCE"), ACS_GREEN = solid("FF92D050");
+  const COLOURS = { red: solid("FFFF0000"), amber: solid("FFFFC000") };
   // cells share style objects in ExcelJS: always give a cell its own copy
   const restyle = (cell, extra) => {
     if (cell.isMerged && cell.master !== cell) return;
     cell.style = Object.assign({}, cell.style, extra(cell.style || {}));
   };
 
-  // "Outcome" column, only on sheets with an outcome: what I said happened to a line on the second look.
-  // entries: [{row, text}]. green: rows marked green, whose outcome cell goes green and bold with them.
-  function writeOutcomes(ws, col, headerRows, entries, green) {
-    for (const r of headerRows) {
-      const h = ws.getRow(r).getCell(col);
-      h.value = "Outcome";
-      restyle(h, s => ({ font: Object.assign({}, s.font, { bold: true }) }));
-    }
-    const byRow = new Map();
-    for (const e of entries) { if (!byRow.has(e.row)) byRow.set(e.row, new Set()); byRow.get(e.row).add(e.text); }
-    for (const [r, texts] of byRow) {
-      const cell = ws.getRow(r).getCell(col);
-      cell.value = [...texts].join("; ");
-      if (green.has(r)) restyle(cell, s => ({ fill: GREEN, font: Object.assign({}, s.font, { bold: true }) }));
-    }
-  }
-
-  // First column from c rightwards with nothing in it, so a note beside the report isn't overwritten
-  function emptyColumn(ws, c) {
-    const used = new Set();
-    ws.eachRow((row) => row.eachCell((cell, i) => used.add(i)));
-    while (used.has(c)) c++;
-    return c;
-  }
-
   // Supplier copy: matched lines green + bold, and an "ACS match" column naming the ACS sheet and cell.
   // marks: the supplier lines to mark ({sheet, row, acsAt}), every plant-code match unless given.
-  // outcomes: [{sheet, row, text}] for the Outcome column, none in the script.
-  function markWorkbook(wb, result, marks, outcomes) {
+  // notes: [{sheet, row, text, amber}] for a Notes column; amber lines are missing from the ACS report. None in the script.
+  function markWorkbook(wb, result, marks, notes) {
     marks = marks || result.matched;
     for (const sh of result.sheets) {
       const ws = wb.getWorksheet(sh.title);
@@ -385,29 +361,20 @@
         row.getCell(extra).value = m.acsAt.join("; ");
         for (let c = 1; c <= extra; c++) restyle(row.getCell(c), s => ({ fill: GREEN, font: Object.assign({}, s.font, { bold: true }) }));
       }
-      const notes = (outcomes || []).filter(o => o.sheet === sh.title);
-      if (notes.length) writeOutcomes(ws, extra + 1, sh.headerRow ? [sh.headerRow] : [], notes, new Set(lines.map(m => m.row)));
-    }
-  }
-
-  // Lines missing from the other report: amber across the line, and a comment for each under the sheet's last line.
-  // entries: [{sheet, row, width, text}], none in the script.
-  function markMissing(wb, entries) {
-    for (const title of new Set(entries.map(e => e.sheet))) {
-      const ws = wb.getWorksheet(title);
-      if (!ws) continue;
-      const notes = entries.filter(e => e.sheet === title).sort((a, b) => a.row - b.row);
-      for (const e of notes) {
-        const row = ws.getRow(e.row);
-        for (let c = 1; c <= e.width; c++) restyle(row.getCell(c), () => ({ fill: AMBER }));
+      const here = (notes || []).filter(n => n.sheet === sh.title);
+      if (!here.length) continue;
+      if (sh.headerRow) {
+        const h = ws.getRow(sh.headerRow).getCell(extra + 1);
+        h.value = "Notes";
+        restyle(h, s => ({ font: Object.assign({}, s.font, { bold: true }) }));
       }
-      let last = ws.rowCount, col = Infinity;
-      while (last > 0 && !ws.getRow(last).hasValues) last--;
-      ws.eachRow((row) => row.eachCell((cell, i) => { if (i < col) col = i; }));
-      const head = ws.getRow(last + 2).getCell(col);
-      head.value = "Missing";
-      restyle(head, s => ({ font: Object.assign({}, s.font, { bold: true }) }));
-      notes.forEach((e, i) => { ws.getRow(last + 3 + i).getCell(col).value = e.text; });
+      const green = new Set(lines.map(m => m.row));
+      for (const r of new Set(here.map(n => n.row))) {
+        const row = ws.getRow(r), mine = here.filter(n => n.row === r), cell = row.getCell(extra + 1);
+        cell.value = [...new Set(mine.map(n => n.text))].join("; ");
+        if (green.has(r)) restyle(cell, s => ({ fill: GREEN, font: Object.assign({}, s.font, { bold: true }) }));
+        else if (mine.some(n => n.amber)) for (let c = 1; c <= extra + 1; c++) restyle(row.getCell(c), () => ({ fill: COLOURS.amber }));
+      }
     }
   }
 
@@ -418,23 +385,42 @@
     return acs.items.filter(i => i.codes.every(c => charged.has(c)));
   }
 
-  // ACS copy: charged lines green + bold across the report's own columns. Other lines keep their colours.
-  // outcomes: [{item, text}] for the Outcome column, none in the script.
-  function markACS(wb, lines, outcomes) {
+  // ACS copy, coloured like my own report: lines to green across the report's own columns, not bold. Other lines keep their colours.
+  // notes: [{sheet, row, width, text, colour}] colour red or amber recolours the line, none leaves it. Each note goes in the next
+  // empty cell along from the report's columns, in the line's colour, so notes already there aren't overwritten.
+  // added: [{sheet, cols, desc, company, code, date, rate, text}] plant charged but not on the ACS report: a red line at the bottom of the job's sheet.
+  function markACS(wb, lines, notes, added) {
+    const paint = (cell, fill) => restyle(cell, () => ({ fill }));
     for (const l of lines) {
       const ws = wb.getWorksheet(l.sheet);
       if (!ws) continue;
       const row = ws.getRow(l.row);
-      for (let c = 1; c <= l.width; c++) restyle(row.getCell(c), s => ({ fill: GREEN, font: Object.assign({}, s.font, { bold: true }) }));
+      for (let c = 1; c <= l.width; c++) paint(row.getCell(c), ACS_GREEN);
     }
-    const sheets = new Map();
-    for (const o of outcomes || []) { if (!sheets.has(o.item.sheet)) sheets.set(o.item.sheet, []); sheets.get(o.item.sheet).push(o); }
-    for (const [title, notes] of sheets) {
+    const onLine = new Set(lines.map(l => `${l.sheet}|${l.row}`));
+    for (const n of notes || []) {
+      const ws = wb.getWorksheet(n.sheet);
+      if (!ws) continue;
+      const row = ws.getRow(n.row), fill = COLOURS[n.colour] || (onLine.has(`${n.sheet}|${n.row}`) ? ACS_GREEN : null);
+      if (COLOURS[n.colour]) for (let c = 1; c <= n.width; c++) paint(row.getCell(c), fill);
+      let c = n.width + 1;
+      while (row.getCell(c).value !== null && row.getCell(c).value !== undefined) c++;
+      row.getCell(c).value = n.text;
+      if (fill) paint(row.getCell(c), fill);
+    }
+    for (const title of new Set((added || []).map(a => a.sheet))) {
       const ws = wb.getWorksheet(title);
       if (!ws) continue;
-      const col = emptyColumn(ws, Math.max(...notes.map(o => o.item.width)) + 1);
-      const headers = new Set(notes.map(o => o.item.headerRow));
-      writeOutcomes(ws, col, headers, notes.map(o => ({ row: o.item.row, text: o.text })), new Set(lines.filter(l => l.sheet === title).map(l => l.row)));
+      let r = ws.rowCount;
+      while (r > 0 && !ws.getRow(r).hasValues) r--;
+      r++;
+      for (const a of added.filter(x => x.sheet === title)) {
+        const row = ws.getRow(++r), put = (i, v) => { if (i >= 0) row.getCell(i + 1).value = v; };
+        put(a.cols.desc, a.desc); put(a.cols.company, a.company); put(a.cols.asset, a.code); put(a.cols.date, a.date); put(a.cols.rate, a.rate);
+        for (let c = 1; c <= a.cols.width; c++) paint(row.getCell(c), COLOURS.red);
+        row.getCell(a.cols.width + 1).value = a.text;
+        paint(row.getCell(a.cols.width + 1), COLOURS.red);
+      }
     }
   }
 
@@ -491,7 +477,7 @@
     return zip.generateAsync({ type: "arraybuffer" });
   }
 
-  const api = { cleanXlsx, crossCheck, acsChargedLines, acsApprovedLines, pairings, markACS, markWorkbook, markMissing, nearCode, codeOnLine, plain, norm, looksLikeCode, cellCodes,
+  const api = { cleanXlsx, crossCheck, acsChargedLines, acsApprovedLines, pairings, markACS, markWorkbook, nearCode, codeOnLine, plain, norm, looksLikeCode, cellCodes,
     readACS, checkSupplier, colLetter, colIndex, words, measures, qtyFrom, money };
   if (typeof module !== "undefined" && module.exports) module.exports = api; else root.HireEngine = api;
 })(typeof globalThis !== "undefined" ? globalThis : this);
