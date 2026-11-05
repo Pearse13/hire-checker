@@ -457,7 +457,6 @@
   }
   // The four things checked on every pairing: item, cost, company, on-hire date. ok: true agree, false don't (or missing).
   // bad: something doesn't agree. Only the second look (hl) highlights it.
-  // An ACS line listing several assets is checked as one: every supplier line for those assets, costs added up.
   function checks(p, hl) {
     const ls = p.lines, a = p.items[0] || {};
     const sup = state.suppliers.find((s) => s.name === ls[0].supplier);
@@ -469,9 +468,6 @@
     const sameWord = [...E.words(a.desc || "")].some((w) => fw.has(w));
     const cost = (v, qty) => v == null ? missing : `£${v.toFixed(2)}${qty > 1 ? ` <small>× ${qty}</small>` : ""}`;
     const name = (n, code) => `${n ? esc(n) : missing}${code ? `<span class="pc-code">${esc(code)}</span>` : ""}`;
-    const group = ls.length > 1 || (a.codes && a.codes.length > 1);
-    // Assets on the ACS line that this supplier hasn't charged for
-    const left = group && p.kind === "match" ? a.codes.filter((c) => !p.codes.includes(c)).slice(p.stand.length) : [];
     const dates = [...new Set(ls.map((f) => f.date))];
     const rest = [
       { k: "Company", s: esc(company || shortName(ls[0].supplier)), a: a.company ? esc(a.company) : missing,
@@ -479,18 +475,6 @@
       { k: "On hire", s: dates.map((d) => d ? fmtDate(d) : missing).join("<br>"), a: a.date ? fmtDate(a.date) : missing,
         ok: !!a.date && dates.length === 1 && dates[0] === a.date },
     ];
-    if (group) {
-      // Running tally: each supplier line adds its cost, ending on the ACS line's cost
-      let run = 0;
-      const lines = ls.map((f, i) => {
-        if (rates[i] != null) run += rates[i];
-        return `<tr class="${hl && sizeClash(f.desc, a.desc) ? "pc-bad" : ""}"><td>${name(f.desc, f.raw)}${p.stand.includes(f) && p.kind === "match" ? `<span class="rv-kind">Different code</span>` : ""}</td><td class="num">${cost(rates[i], 1)}</td><td class="num">£${run.toFixed(2)}</td></tr>`;
-      }).concat(left.map((c) => `<tr class="pc-left"><td>Not charged<span class="pc-code">${esc(c)}</span></td><td class="num">–</td><td class="num">£${run.toFixed(2)}</td></tr>`));
-      const ok = fr != null && ar != null && near(fr, ar) && !left.length;
-      const sized = ls.some((f) => sizeClash(f.desc, a.desc));
-      return { group: true, title: a.desc, rows: rest, bad: !ok || sized || rest.some((r) => !r.ok), tally: `<table class="tally"><tbody>${lines.join("")}</tbody>
-        <tfoot><tr class="${!hl ? "" : ok ? "pc-ok" : "pc-bad"}"><th>Tally</th><td colspan="2" class="num"><b>£${run.toFixed(2)}</b> ${ok ? "=" : "≠"} ACS <b>${cost(ar, 1)}</b>${hl ? ` <span class="pc-mark">${ok ? "✓" : "✗"}</span>` : ""}</td></tr></tfoot></table>` };
-    }
     const rows = [
       { k: "Item", s: name(ls[0].desc, ls[0].raw), a: name(a.desc, a.assetText || p.acsAt.join(", ")),
         ok: !!ls[0].desc && !!a.desc && !sizeClash(ls[0].desc, a.desc) && (p.kind === "match" || sameWord) },
@@ -498,7 +482,7 @@
         ok: fr != null && ar != null && (near(fr, ar) || near(fr * (a.qty || 1), ar) || near(fr * (ls[0].qty || 1), ar)) },
       ...rest,
     ];
-    return { group: false, rows, bad: rows.some((r) => !r.ok) };
+    return { rows, bad: rows.some((r) => !r.ok) };
   }
 
   const jobOf = (p) => [...new Set(p.items.length ? p.items.map((a) => a.sheet) : p.acsAt.map((c) => c.split("!")[0]))].join(", ");
@@ -510,9 +494,8 @@
     const d = decisionOf(p), c = checks(p, hl);
     const rows = c.rows.map((r) => `<tr class="${!hl ? "" : r.ok ? "pc-ok" : "pc-bad"}"><th>${r.k}</th><td>${r.s}</td><td>${r.a}</td><td class="pc-mark">${!hl ? "" : r.ok ? "✓" : "✗"}</td></tr>`).join("");
     return `<section class="review">
-      <div class="rv-top"><h2 class="rv-job">${esc(jobOf(p))}${c.group ? `<small>${esc(c.title)}</small>` : ""}</h2><span class="rv-pos">${count}</span>${p.kind !== "match" ? `<span class="rv-kind">Different code</span>` : ""}${d ? decisionPill(d) : ""}${extra ? extra.pill : ""}</div>
+      <div class="rv-top"><h2 class="rv-job">${esc(jobOf(p))}</h2><span class="rv-pos">${count}</span>${p.kind !== "match" ? `<span class="rv-kind">Different code</span>` : ""}${d ? decisionPill(d) : ""}${extra ? extra.pill : ""}</div>
       ${progress}
-      ${c.group ? c.tally : ""}
       <table class="pc"><thead><tr><th></th><th>Supplier</th><th>ACS</th><th></th></tr></thead><tbody>${rows}</tbody></table>
       <div class="rv-actions">
         <button class="btn big" id="rvYes">Approve <kbd>A</kbd></button>

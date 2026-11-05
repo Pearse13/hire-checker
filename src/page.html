@@ -169,7 +169,6 @@ tr.current td { box-shadow: inset 0 2px 0 var(--focus), inset 0 -2px 0 var(--foc
 .pc tbody th { border-top: 1px solid var(--line); }
 .pc-code { display: block; font-family: var(--mono, ui-monospace, monospace); font-size: 12px; color: var(--muted); margin-top: 2px; }
 .pc-none { color: var(--flag); font-style: italic; }
-.pc-left { color: var(--flag); font-style: italic; }
 .pc-one tbody th { width: 78px; }
 .rv-note { margin: 0; font-size: 14px; color: var(--warn); }
 .rv-outcome-head { font-size: 12px; font-weight: 700; text-transform: uppercase; letter-spacing: .06em; color: var(--muted); margin-bottom: -4px; }
@@ -181,23 +180,13 @@ tr.current td { box-shadow: inset 0 2px 0 var(--focus), inset 0 -2px 0 var(--foc
 @media (hover: none) { .rv-outcomes kbd { display: none; } }
 .rv-other { display: flex; gap: 8px; }
 .rv-other input { flex: 1; min-width: 0; font: inherit; padding: 8px 10px; border: 1px solid var(--line); border-radius: 4px; background: var(--bg); color: var(--ink); }
-.pc .rv-kind, .tally .rv-kind { display: inline-block; margin-top: 3px; font-size: 11px; white-space: nowrap; }
+.pc .rv-kind { display: inline-block; margin-top: 3px; font-size: 11px; white-space: nowrap; }
 .rv-job small { display: block; font-size: 14px; font-weight: 400; color: var(--muted); }
-.tally { width: 100%; border-collapse: collapse; }
-.tally td, .tally th { padding: 8px; font-size: 15px; vertical-align: top; border-top: 1px solid var(--line); overflow-wrap: anywhere; }
-.tally td.num { text-align: right; white-space: nowrap; font-variant-numeric: tabular-nums; }
-.tally td.num:last-child { color: var(--muted); }
-.tally tfoot th { text-align: left; font-size: 13px; color: var(--muted); }
-.tally tfoot td, .tally tfoot th { border-top: 2px solid var(--ink); font-size: 16px; }
-.tally tfoot td.num { color: inherit; }
-.tally tfoot .pc-mark { margin-left: 6px; }
 .pc-bad .pc-mark { color: var(--flag); } .pc-ok .pc-mark { color: var(--ok); }
-.tally .pc-bad td, .tally .pc-bad th { background: var(--flag-fill); }
 @media (max-width: 560px) {
   .pc thead th:first-child { width: 70px; } .pc thead th:last-child { width: 22px; }
   .pc td, .pc tbody th { padding: 8px 4px; }
   .pc tbody th { font-size: 11px; }
-  .tally td, .tally th { padding: 8px 4px; font-size: 14px; }
 }
 .pc small { font-weight: 400; font-size: 11px; }
 .pc-mark { font-size: 18px; font-weight: 700; text-align: center; }

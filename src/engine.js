@@ -401,47 +401,18 @@
 
   // ---------- pairings to approve one at a time (web app) ----------
   // Every plant-code match, then every suggestion with an ACS line, then the £0 end pass finds.
-  // Each pairing is the supplier line(s) and the ACS line(s) they pair with. An ACS line listing several
-  // assets is one pairing holding every supplier line charged for those assets, so their costs are checked together.
+  // Each pairing is one supplier line and the ACS line(s) it pairs with, by plant code.
   function pairings(acs, results, cross) {
     const key = (lines, cells) => `${lines.map(f => `${f.supplier}|${f.sheet}|${f.row}`).join("+")}|${cells.join(";")}`;
-    const out = [], grouped = new Map();   // ACS cell -> pairing for a line listing several assets
-    const group = (a, m) => {
-      let p = grouped.get(a.cell);
-      if (!p) { p = { kind: "match", line: m, lines: [], items: [a], acsAt: [a.cell], codes: [], stand: [], reasons: [] }; grouped.set(a.cell, p); out.push(p); }
-      return p;
-    };
-    for (const r of results) {
-    // The same code on several supplier lines (a hose charged in parts): one pairing, costs added up
-    const times = new Map();
-    for (const m of r.matched) times.set(m.code, (times.get(m.code) || 0) + 1);
-    for (const m of r.matched) {
-      const items = acs.items.filter(i => i.codes.includes(m.code));
-      const multi = items.filter(i => i.codes.length > 1);
-      if (!multi.length && times.get(m.code) > 1) {
-        const k = `${r.name}|${m.code}`;
-        let p = grouped.get(k);
-        if (!p) { p = { kind: "match", line: m, lines: [], items, acsAt: m.acsAt, codes: [m.code], stand: [], reasons: [] }; grouped.set(k, p); out.push(p); }
-        p.lines.push(m); continue;
-      }
-      if (!multi.length) { out.push({ id: key([m], m.acsAt), kind: "match", line: m, lines: [m], items, acsAt: m.acsAt, codes: [m.code], stand: [], reasons: [] }); continue; }
-      // A code on several such lines (a charger in each radio set): one supplier line per ACS line, in order
-      const a = multi.find(i => !(grouped.get(i.cell) || { codes: [] }).codes.includes(m.code)) || multi[0];
-      const p = group(a, m);
-      p.lines.push(m); p.codes.push(m.code);
-    }
-    }
+    const out = [];
+    for (const r of results) for (const m of r.matched)
+      out.push({ id: key([m], m.acsAt), kind: "match", line: m, lines: [m], items: acs.items.filter(i => i.codes.includes(m.code)), acsAt: m.acsAt, codes: [m.code], stand: [], reasons: [] });
     if (cross) {
-      for (const g of cross.suggestions) if (g.acs) {
-        // Suggested for an asset on a line already being checked as one: it joins that pairing
-        const p = grouped.get(g.acs.cell);
-        if (p) { p.lines.push(g.line); p.stand.push(g.line); p.reasons.push(...g.reasons); continue; }
+      for (const g of cross.suggestions) if (g.acs)
         out.push({ id: key([g.line], [g.acs.cell]), kind: "suggest", line: g.line, lines: [g.line], items: [g.acs], acsAt: [g.acs.cell], codes: [], stand: [g.line], reasons: g.reasons });
-      }
       for (const z of cross.zeroPass) if (z.line)
         out.push({ id: key([z.line], [z.acs.cell]), kind: "zero", line: z.line, lines: [z.line], items: [z.acs], acsAt: [z.acs.cell], codes: [], stand: [z.line], reasons: z.reasons });
     }
-    for (const p of grouped.values()) p.id = key(p.lines, p.acsAt);
     return out;
   }
 

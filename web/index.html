@@ -169,7 +169,6 @@ tr.current td { box-shadow: inset 0 2px 0 var(--focus), inset 0 -2px 0 var(--foc
 .pc tbody th { border-top: 1px solid var(--line); }
 .pc-code { display: block; font-family: var(--mono, ui-monospace, monospace); font-size: 12px; color: var(--muted); margin-top: 2px; }
 .pc-none { color: var(--flag); font-style: italic; }
-.pc-left { color: var(--flag); font-style: italic; }
 .pc-one tbody th { width: 78px; }
 .rv-note { margin: 0; font-size: 14px; color: var(--warn); }
 .rv-outcome-head { font-size: 12px; font-weight: 700; text-transform: uppercase; letter-spacing: .06em; color: var(--muted); margin-bottom: -4px; }
@@ -181,23 +180,13 @@ tr.current td { box-shadow: inset 0 2px 0 var(--focus), inset 0 -2px 0 var(--foc
 @media (hover: none) { .rv-outcomes kbd { display: none; } }
 .rv-other { display: flex; gap: 8px; }
 .rv-other input { flex: 1; min-width: 0; font: inherit; padding: 8px 10px; border: 1px solid var(--line); border-radius: 4px; background: var(--bg); color: var(--ink); }
-.pc .rv-kind, .tally .rv-kind { display: inline-block; margin-top: 3px; font-size: 11px; white-space: nowrap; }
+.pc .rv-kind { display: inline-block; margin-top: 3px; font-size: 11px; white-space: nowrap; }
 .rv-job small { display: block; font-size: 14px; font-weight: 400; color: var(--muted); }
-.tally { width: 100%; border-collapse: collapse; }
-.tally td, .tally th { padding: 8px; font-size: 15px; vertical-align: top; border-top: 1px solid var(--line); overflow-wrap: anywhere; }
-.tally td.num { text-align: right; white-space: nowrap; font-variant-numeric: tabular-nums; }
-.tally td.num:last-child { color: var(--muted); }
-.tally tfoot th { text-align: left; font-size: 13px; color: var(--muted); }
-.tally tfoot td, .tally tfoot th { border-top: 2px solid var(--ink); font-size: 16px; }
-.tally tfoot td.num { color: inherit; }
-.tally tfoot .pc-mark { margin-left: 6px; }
 .pc-bad .pc-mark { color: var(--flag); } .pc-ok .pc-mark { color: var(--ok); }
-.tally .pc-bad td, .tally .pc-bad th { background: var(--flag-fill); }
 @media (max-width: 560px) {
   .pc thead th:first-child { width: 70px; } .pc thead th:last-child { width: 22px; }
   .pc td, .pc tbody th { padding: 8px 4px; }
   .pc tbody th { font-size: 11px; }
-  .tally td, .tally th { padding: 8px 4px; font-size: 14px; }
 }
 .pc small { font-weight: 400; font-size: 11px; }
 .pc-mark { font-size: 18px; font-weight: 700; text-align: center; }
@@ -678,47 +667,18 @@ details[open] > summary { margin-bottom: 10px; }
 
   // ---------- pairings to approve one at a time (web app) ----------
   // Every plant-code match, then every suggestion with an ACS line, then the £0 end pass finds.
-  // Each pairing is the supplier line(s) and the ACS line(s) they pair with. An ACS line listing several
-  // assets is one pairing holding every supplier line charged for those assets, so their costs are checked together.
+  // Each pairing is one supplier line and the ACS line(s) it pairs with, by plant code.
   function pairings(acs, results, cross) {
     const key = (lines, cells) => `${lines.map(f => `${f.supplier}|${f.sheet}|${f.row}`).join("+")}|${cells.join(";")}`;
-    const out = [], grouped = new Map();   // ACS cell -> pairing for a line listing several assets
-    const group = (a, m) => {
-      let p = grouped.get(a.cell);
-      if (!p) { p = { kind: "match", line: m, lines: [], items: [a], acsAt: [a.cell], codes: [], stand: [], reasons: [] }; grouped.set(a.cell, p); out.push(p); }
-      return p;
-    };
-    for (const r of results) {
-    // The same code on several supplier lines (a hose charged in parts): one pairing, costs added up
-    const times = new Map();
-    for (const m of r.matched) times.set(m.code, (times.get(m.code) || 0) + 1);
-    for (const m of r.matched) {
-      const items = acs.items.filter(i => i.codes.includes(m.code));
-      const multi = items.filter(i => i.codes.length > 1);
-      if (!multi.length && times.get(m.code) > 1) {
-        const k = `${r.name}|${m.code}`;
-        let p = grouped.get(k);
-        if (!p) { p = { kind: "match", line: m, lines: [], items, acsAt: m.acsAt, codes: [m.code], stand: [], reasons: [] }; grouped.set(k, p); out.push(p); }
-        p.lines.push(m); continue;
-      }
-      if (!multi.length) { out.push({ id: key([m], m.acsAt), kind: "match", line: m, lines: [m], items, acsAt: m.acsAt, codes: [m.code], stand: [], reasons: [] }); continue; }
-      // A code on several such lines (a charger in each radio set): one supplier line per ACS line, in order
-      const a = multi.find(i => !(grouped.get(i.cell) || { codes: [] }).codes.includes(m.code)) || multi[0];
-      const p = group(a, m);
-      p.lines.push(m); p.codes.push(m.code);
-    }
-    }
+    const out = [];
+    for (const r of results) for (const m of r.matched)
+      out.push({ id: key([m], m.acsAt), kind: "match", line: m, lines: [m], items: acs.items.filter(i => i.codes.includes(m.code)), acsAt: m.acsAt, codes: [m.code], stand: [], reasons: [] });
     if (cross) {
-      for (const g of cross.suggestions) if (g.acs) {
-        // Suggested for an asset on a line already being checked as one: it joins that pairing
-        const p = grouped.get(g.acs.cell);
-        if (p) { p.lines.push(g.line); p.stand.push(g.line); p.reasons.push(...g.reasons); continue; }
+      for (const g of cross.suggestions) if (g.acs)
         out.push({ id: key([g.line], [g.acs.cell]), kind: "suggest", line: g.line, lines: [g.line], items: [g.acs], acsAt: [g.acs.cell], codes: [], stand: [g.line], reasons: g.reasons });
-      }
       for (const z of cross.zeroPass) if (z.line)
         out.push({ id: key([z.line], [z.acs.cell]), kind: "zero", line: z.line, lines: [z.line], items: [z.acs], acsAt: [z.acs.cell], codes: [], stand: [z.line], reasons: z.reasons });
     }
-    for (const p of grouped.values()) p.id = key(p.lines, p.acsAt);
     return out;
   }
 
@@ -1218,7 +1178,6 @@ details[open] > summary { margin-bottom: 10px; }
   }
   // The four things checked on every pairing: item, cost, company, on-hire date. ok: true agree, false don't (or missing).
   // bad: something doesn't agree. Only the second look (hl) highlights it.
-  // An ACS line listing several assets is checked as one: every supplier line for those assets, costs added up.
   function checks(p, hl) {
     const ls = p.lines, a = p.items[0] || {};
     const sup = state.suppliers.find((s) => s.name === ls[0].supplier);
@@ -1230,9 +1189,6 @@ details[open] > summary { margin-bottom: 10px; }
     const sameWord = [...E.words(a.desc || "")].some((w) => fw.has(w));
     const cost = (v, qty) => v == null ? missing : `£${v.toFixed(2)}${qty > 1 ? ` <small>× ${qty}</small>` : ""}`;
     const name = (n, code) => `${n ? esc(n) : missing}${code ? `<span class="pc-code">${esc(code)}</span>` : ""}`;
-    const group = ls.length > 1 || (a.codes && a.codes.length > 1);
-    // Assets on the ACS line that this supplier hasn't charged for
-    const left = group && p.kind === "match" ? a.codes.filter((c) => !p.codes.includes(c)).slice(p.stand.length) : [];
     const dates = [...new Set(ls.map((f) => f.date))];
     const rest = [
       { k: "Company", s: esc(company || shortName(ls[0].supplier)), a: a.company ? esc(a.company) : missing,
@@ -1240,18 +1196,6 @@ details[open] > summary { margin-bottom: 10px; }
       { k: "On hire", s: dates.map((d) => d ? fmtDate(d) : missing).join("<br>"), a: a.date ? fmtDate(a.date) : missing,
         ok: !!a.date && dates.length === 1 && dates[0] === a.date },
     ];
-    if (group) {
-      // Running tally: each supplier line adds its cost, ending on the ACS line's cost
-      let run = 0;
-      const lines = ls.map((f, i) => {
-        if (rates[i] != null) run += rates[i];
-        return `<tr class="${hl && sizeClash(f.desc, a.desc) ? "pc-bad" : ""}"><td>${name(f.desc, f.raw)}${p.stand.includes(f) && p.kind === "match" ? `<span class="rv-kind">Different code</span>` : ""}</td><td class="num">${cost(rates[i], 1)}</td><td class="num">£${run.toFixed(2)}</td></tr>`;
-      }).concat(left.map((c) => `<tr class="pc-left"><td>Not charged<span class="pc-code">${esc(c)}</span></td><td class="num">–</td><td class="num">£${run.toFixed(2)}</td></tr>`));
-      const ok = fr != null && ar != null && near(fr, ar) && !left.length;
-      const sized = ls.some((f) => sizeClash(f.desc, a.desc));
-      return { group: true, title: a.desc, rows: rest, bad: !ok || sized || rest.some((r) => !r.ok), tally: `<table class="tally"><tbody>${lines.join("")}</tbody>
-        <tfoot><tr class="${!hl ? "" : ok ? "pc-ok" : "pc-bad"}"><th>Tally</th><td colspan="2" class="num"><b>£${run.toFixed(2)}</b> ${ok ? "=" : "≠"} ACS <b>${cost(ar, 1)}</b>${hl ? ` <span class="pc-mark">${ok ? "✓" : "✗"}</span>` : ""}</td></tr></tfoot></table>` };
-    }
     const rows = [
       { k: "Item", s: name(ls[0].desc, ls[0].raw), a: name(a.desc, a.assetText || p.acsAt.join(", ")),
         ok: !!ls[0].desc && !!a.desc && !sizeClash(ls[0].desc, a.desc) && (p.kind === "match" || sameWord) },
@@ -1259,7 +1203,7 @@ details[open] > summary { margin-bottom: 10px; }
         ok: fr != null && ar != null && (near(fr, ar) || near(fr * (a.qty || 1), ar) || near(fr * (ls[0].qty || 1), ar)) },
       ...rest,
     ];
-    return { group: false, rows, bad: rows.some((r) => !r.ok) };
+    return { rows, bad: rows.some((r) => !r.ok) };
   }
 
   const jobOf = (p) => [...new Set(p.items.length ? p.items.map((a) => a.sheet) : p.acsAt.map((c) => c.split("!")[0]))].join(", ");
@@ -1271,9 +1215,8 @@ details[open] > summary { margin-bottom: 10px; }
     const d = decisionOf(p), c = checks(p, hl);
     const rows = c.rows.map((r) => `<tr class="${!hl ? "" : r.ok ? "pc-ok" : "pc-bad"}"><th>${r.k}</th><td>${r.s}</td><td>${r.a}</td><td class="pc-mark">${!hl ? "" : r.ok ? "✓" : "✗"}</td></tr>`).join("");
     return `<section class="review">
-      <div class="rv-top"><h2 class="rv-job">${esc(jobOf(p))}${c.group ? `<small>${esc(c.title)}</small>` : ""}</h2><span class="rv-pos">${count}</span>${p.kind !== "match" ? `<span class="rv-kind">Different code</span>` : ""}${d ? decisionPill(d) : ""}${extra ? extra.pill : ""}</div>
+      <div class="rv-top"><h2 class="rv-job">${esc(jobOf(p))}</h2><span class="rv-pos">${count}</span>${p.kind !== "match" ? `<span class="rv-kind">Different code</span>` : ""}${d ? decisionPill(d) : ""}${extra ? extra.pill : ""}</div>
       ${progress}
-      ${c.group ? c.tally : ""}
       <table class="pc"><thead><tr><th></th><th>Supplier</th><th>ACS</th><th></th></tr></thead><tbody>${rows}</tbody></table>
       <div class="rv-actions">
         <button class="btn big" id="rvYes">Approve <kbd>A</kbd></button>
