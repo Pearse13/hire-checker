@@ -107,7 +107,7 @@
         const asset = hdr.findIndex(h => /asset|plant\s*code|^code$/.test(h));
         const company = hdr.findIndex(h => /company|supplier|hire\s*co/.test(h));
         if (asset >= 0 && company >= 0) {
-          cols = { asset, company, width: hdr.reduce((w, h, i) => h ? i + 1 : w, 0),
+          cols = { asset, company, headerRow: r + 1, width: hdr.reduce((w, h, i) => h ? i + 1 : w, 0),
             desc: hdr.findIndex(h => /detail|desc|plant hired/.test(h)),
             date: hdr.findIndex(h => /date/.test(h)),
             rate: hdr.findIndex(h => /rate|price|cost/.test(h)),
@@ -124,7 +124,7 @@
         const status = cols.status >= 0 ? text(row[cols.status]) : "";
         const rate = cols.rate >= 0 ? money(row[cols.rate]) : null;
         items.push({
-          sheet: sh.title, row: r + 1, codes: parts, width: cols.width,
+          sheet: sh.title, row: r + 1, codes: parts, width: cols.width, headerRow: cols.headerRow,
           cell: `${sh.title}!${colLetter(cols.asset)}${r + 1}`,
           assetText: text(row[cols.asset]), company: comp, desc,
           date: cols.date >= 0 ? dayKey(row[cols.date]) : null,
@@ -317,9 +317,35 @@
     cell.style = Object.assign({}, cell.style, extra(cell.style || {}));
   };
 
+  // "Outcome" column, only on sheets with an outcome: what I said happened to a line on the second look.
+  // entries: [{row, text}]. green: rows marked green, whose outcome cell goes green and bold with them.
+  function writeOutcomes(ws, col, headerRows, entries, green) {
+    for (const r of headerRows) {
+      const h = ws.getRow(r).getCell(col);
+      h.value = "Outcome";
+      restyle(h, s => ({ font: Object.assign({}, s.font, { bold: true }) }));
+    }
+    const byRow = new Map();
+    for (const e of entries) { if (!byRow.has(e.row)) byRow.set(e.row, new Set()); byRow.get(e.row).add(e.text); }
+    for (const [r, texts] of byRow) {
+      const cell = ws.getRow(r).getCell(col);
+      cell.value = [...texts].join("; ");
+      if (green.has(r)) restyle(cell, s => ({ fill: GREEN, font: Object.assign({}, s.font, { bold: true }) }));
+    }
+  }
+
+  // First column from c rightwards with nothing in it, so a note beside the report isn't overwritten
+  function emptyColumn(ws, c) {
+    const used = new Set();
+    ws.eachRow((row) => row.eachCell((cell, i) => used.add(i)));
+    while (used.has(c)) c++;
+    return c;
+  }
+
   // Supplier copy: matched lines green + bold, and an "ACS match" column naming the ACS sheet and cell.
   // marks: the supplier lines to mark ({sheet, row, acsAt}), every plant-code match unless given.
-  function markWorkbook(wb, result, marks) {
+  // outcomes: [{sheet, row, text}] for the Outcome column, none in the script.
+  function markWorkbook(wb, result, marks, outcomes) {
     marks = marks || result.matched;
     for (const sh of result.sheets) {
       const ws = wb.getWorksheet(sh.title);
@@ -336,6 +362,8 @@
         row.getCell(extra).value = m.acsAt.join("; ");
         for (let c = 1; c <= extra; c++) restyle(row.getCell(c), s => ({ fill: GREEN, font: Object.assign({}, s.font, { bold: true }) }));
       }
+      const notes = (outcomes || []).filter(o => o.sheet === sh.title);
+      if (notes.length) writeOutcomes(ws, extra + 1, sh.headerRow ? [sh.headerRow] : [], notes, new Set(lines.map(m => m.row)));
     }
   }
 
@@ -347,12 +375,22 @@
   }
 
   // ACS copy: charged lines green + bold across the report's own columns. Other lines keep their colours.
-  function markACS(wb, lines) {
+  // outcomes: [{item, text}] for the Outcome column, none in the script.
+  function markACS(wb, lines, outcomes) {
     for (const l of lines) {
       const ws = wb.getWorksheet(l.sheet);
       if (!ws) continue;
       const row = ws.getRow(l.row);
       for (let c = 1; c <= l.width; c++) restyle(row.getCell(c), s => ({ fill: GREEN, font: Object.assign({}, s.font, { bold: true }) }));
+    }
+    const sheets = new Map();
+    for (const o of outcomes || []) { if (!sheets.has(o.item.sheet)) sheets.set(o.item.sheet, []); sheets.get(o.item.sheet).push(o); }
+    for (const [title, notes] of sheets) {
+      const ws = wb.getWorksheet(title);
+      if (!ws) continue;
+      const col = emptyColumn(ws, Math.max(...notes.map(o => o.item.width)) + 1);
+      const headers = new Set(notes.map(o => o.item.headerRow));
+      writeOutcomes(ws, col, headers, notes.map(o => ({ row: o.item.row, text: o.text })), new Set(lines.filter(l => l.sheet === title).map(l => l.row)));
     }
   }
 

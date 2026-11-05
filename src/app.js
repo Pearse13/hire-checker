@@ -170,7 +170,7 @@
   async function buildChecked(s) {
     const wb = new ExcelJS.Workbook();
     await wb.xlsx.load(s.buf.slice(0));
-    E.markWorkbook(wb, s.result, supplierMarks(s));
+    E.markWorkbook(wb, s.result, supplierMarks(s), lineOutcomes().filter((o) => o.supplier === s.name));
     const out = await wb.xlsx.writeBuffer();
     return new Blob([out], { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" });
   }
@@ -179,10 +179,14 @@
   // Only approved pairings are marked: the supplier line gets the ACS cell(s) it was paired with
   const supplierMarks = (s) => approved().flatMap((p) => p.lines.filter((f) => f.supplier === s.name).map((f) => ({ sheet: f.sheet, row: f.row, acsAt: f.acsAt || p.acsAt })));
   const acsLines = () => E.acsApprovedLines(state.acs, approved());
+  // Second-look outcomes, for the Outcome column on each copy
+  const withOutcome = () => state.second.map((it) => ({ it, text: state.decisions.get("outcome:" + it.id) })).filter((o) => o.text);
+  const lineOutcomes = () => withOutcome().flatMap(({ it, text }) => (it.p ? it.p.lines : it.f ? [it.f] : []).map((f) => ({ supplier: f.supplier, sheet: f.sheet, row: f.row, text })));
+  const itemOutcomes = () => withOutcome().flatMap(({ it, text }) => (it.p ? it.p.items : it.a ? [it.a] : []).map((item) => ({ item, text })));
   async function buildACS() {
     const wb = new ExcelJS.Workbook();
     await wb.xlsx.load(state.acs.buf.slice(0));
-    E.markACS(wb, acsLines());
+    E.markACS(wb, acsLines(), itemOutcomes());
     return new Blob([await wb.xlsx.writeBuffer()], { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" });
   }
 
@@ -441,8 +445,9 @@
     const was = state.decisions.get("outcome:" + it.id);
     return {
       pill: was ? `<span class="pill ok">${esc(was)}</span>` : "",
-      buttons: `<div class="rv-outcomes">${outcomesFor(it).map((o, i) => `<button class="btn" data-out="${esc(o)}">${esc(o)} <kbd>${i + 1}</kbd></button>`).join("")}
-        <button class="btn" id="rvOther">Other</button></div>
+      buttons: `<div class="rv-outcome-head">What happened?</div>
+        <div class="rv-outcomes">${outcomesFor(it).map((o, i) => `<button class="btn" data-out="${esc(o)}" aria-pressed="${was === o}"><span>${esc(o)}</span><kbd>${i + 1}</kbd></button>`).join("")}
+        <button class="btn" id="rvOther" aria-pressed="${!!was && !outcomesFor(it).includes(was)}"><span>Other</span></button></div>
         ${state.otherOpen ? `<form class="rv-other" id="rvOtherForm"><input id="rvOtherText" aria-label="What happened" placeholder="What happened?" maxlength="120"><button class="btn">Save</button></form>` : ""}`,
     };
   }

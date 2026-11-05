@@ -172,9 +172,12 @@ tr.current td { box-shadow: inset 0 2px 0 var(--focus), inset 0 -2px 0 var(--foc
 .pc-left { color: var(--flag); font-style: italic; }
 .pc-one tbody th { width: 78px; }
 .rv-note { margin: 0; font-size: 14px; color: var(--warn); }
-.rv-outcomes { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 8px; }
-.rv-outcomes .btn { padding-block: 12px; }
-.rv-outcomes kbd { font: inherit; font-size: 12px; opacity: .7; margin-left: 4px; }
+.rv-outcome-head { font-size: 12px; font-weight: 700; text-transform: uppercase; letter-spacing: .06em; color: var(--muted); margin-bottom: -4px; }
+.rv-outcomes { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+.rv-outcomes .btn { display: flex; align-items: center; justify-content: space-between; gap: 8px; min-height: 50px; padding: 8px 12px; text-align: left; line-height: 1.25; font-size: 15px; }
+.rv-outcomes .btn:last-child:nth-child(odd) { grid-column: 1 / -1; }
+.rv-outcomes .btn[aria-pressed="true"] { box-shadow: inset 0 0 0 2px #fff; }
+.rv-outcomes kbd { flex: none; font: inherit; font-size: 12px; font-weight: 700; min-width: 22px; height: 22px; display: inline-flex; align-items: center; justify-content: center; border-radius: 4px; background: rgba(255, 255, 255, .18); }
 @media (hover: none) { .rv-outcomes kbd { display: none; } }
 .rv-other { display: flex; gap: 8px; }
 .rv-other input { flex: 1; min-width: 0; font: inherit; padding: 8px 10px; border: 1px solid var(--line); border-radius: 4px; background: var(--bg); color: var(--ink); }
@@ -380,7 +383,7 @@ details[open] > summary { margin-bottom: 10px; }
         const asset = hdr.findIndex(h => /asset|plant\s*code|^code$/.test(h));
         const company = hdr.findIndex(h => /company|supplier|hire\s*co/.test(h));
         if (asset >= 0 && company >= 0) {
-          cols = { asset, company, width: hdr.reduce((w, h, i) => h ? i + 1 : w, 0),
+          cols = { asset, company, headerRow: r + 1, width: hdr.reduce((w, h, i) => h ? i + 1 : w, 0),
             desc: hdr.findIndex(h => /detail|desc|plant hired/.test(h)),
             date: hdr.findIndex(h => /date/.test(h)),
             rate: hdr.findIndex(h => /rate|price|cost/.test(h)),
@@ -397,7 +400,7 @@ details[open] > summary { margin-bottom: 10px; }
         const status = cols.status >= 0 ? text(row[cols.status]) : "";
         const rate = cols.rate >= 0 ? money(row[cols.rate]) : null;
         items.push({
-          sheet: sh.title, row: r + 1, codes: parts, width: cols.width,
+          sheet: sh.title, row: r + 1, codes: parts, width: cols.width, headerRow: cols.headerRow,
           cell: `${sh.title}!${colLetter(cols.asset)}${r + 1}`,
           assetText: text(row[cols.asset]), company: comp, desc,
           date: cols.date >= 0 ? dayKey(row[cols.date]) : null,
@@ -590,9 +593,35 @@ details[open] > summary { margin-bottom: 10px; }
     cell.style = Object.assign({}, cell.style, extra(cell.style || {}));
   };
 
+  // "Outcome" column, only on sheets with an outcome: what I said happened to a line on the second look.
+  // entries: [{row, text}]. green: rows marked green, whose outcome cell goes green and bold with them.
+  function writeOutcomes(ws, col, headerRows, entries, green) {
+    for (const r of headerRows) {
+      const h = ws.getRow(r).getCell(col);
+      h.value = "Outcome";
+      restyle(h, s => ({ font: Object.assign({}, s.font, { bold: true }) }));
+    }
+    const byRow = new Map();
+    for (const e of entries) { if (!byRow.has(e.row)) byRow.set(e.row, new Set()); byRow.get(e.row).add(e.text); }
+    for (const [r, texts] of byRow) {
+      const cell = ws.getRow(r).getCell(col);
+      cell.value = [...texts].join("; ");
+      if (green.has(r)) restyle(cell, s => ({ fill: GREEN, font: Object.assign({}, s.font, { bold: true }) }));
+    }
+  }
+
+  // First column from c rightwards with nothing in it, so a note beside the report isn't overwritten
+  function emptyColumn(ws, c) {
+    const used = new Set();
+    ws.eachRow((row) => row.eachCell((cell, i) => used.add(i)));
+    while (used.has(c)) c++;
+    return c;
+  }
+
   // Supplier copy: matched lines green + bold, and an "ACS match" column naming the ACS sheet and cell.
   // marks: the supplier lines to mark ({sheet, row, acsAt}), every plant-code match unless given.
-  function markWorkbook(wb, result, marks) {
+  // outcomes: [{sheet, row, text}] for the Outcome column, none in the script.
+  function markWorkbook(wb, result, marks, outcomes) {
     marks = marks || result.matched;
     for (const sh of result.sheets) {
       const ws = wb.getWorksheet(sh.title);
@@ -609,6 +638,8 @@ details[open] > summary { margin-bottom: 10px; }
         row.getCell(extra).value = m.acsAt.join("; ");
         for (let c = 1; c <= extra; c++) restyle(row.getCell(c), s => ({ fill: GREEN, font: Object.assign({}, s.font, { bold: true }) }));
       }
+      const notes = (outcomes || []).filter(o => o.sheet === sh.title);
+      if (notes.length) writeOutcomes(ws, extra + 1, sh.headerRow ? [sh.headerRow] : [], notes, new Set(lines.map(m => m.row)));
     }
   }
 
@@ -620,12 +651,22 @@ details[open] > summary { margin-bottom: 10px; }
   }
 
   // ACS copy: charged lines green + bold across the report's own columns. Other lines keep their colours.
-  function markACS(wb, lines) {
+  // outcomes: [{item, text}] for the Outcome column, none in the script.
+  function markACS(wb, lines, outcomes) {
     for (const l of lines) {
       const ws = wb.getWorksheet(l.sheet);
       if (!ws) continue;
       const row = ws.getRow(l.row);
       for (let c = 1; c <= l.width; c++) restyle(row.getCell(c), s => ({ fill: GREEN, font: Object.assign({}, s.font, { bold: true }) }));
+    }
+    const sheets = new Map();
+    for (const o of outcomes || []) { if (!sheets.has(o.item.sheet)) sheets.set(o.item.sheet, []); sheets.get(o.item.sheet).push(o); }
+    for (const [title, notes] of sheets) {
+      const ws = wb.getWorksheet(title);
+      if (!ws) continue;
+      const col = emptyColumn(ws, Math.max(...notes.map(o => o.item.width)) + 1);
+      const headers = new Set(notes.map(o => o.item.headerRow));
+      writeOutcomes(ws, col, headers, notes.map(o => ({ row: o.item.row, text: o.text })), new Set(lines.filter(l => l.sheet === title).map(l => l.row)));
     }
   }
 
@@ -884,7 +925,7 @@ details[open] > summary { margin-bottom: 10px; }
   async function buildChecked(s) {
     const wb = new ExcelJS.Workbook();
     await wb.xlsx.load(s.buf.slice(0));
-    E.markWorkbook(wb, s.result, supplierMarks(s));
+    E.markWorkbook(wb, s.result, supplierMarks(s), lineOutcomes().filter((o) => o.supplier === s.name));
     const out = await wb.xlsx.writeBuffer();
     return new Blob([out], { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" });
   }
@@ -893,10 +934,14 @@ details[open] > summary { margin-bottom: 10px; }
   // Only approved pairings are marked: the supplier line gets the ACS cell(s) it was paired with
   const supplierMarks = (s) => approved().flatMap((p) => p.lines.filter((f) => f.supplier === s.name).map((f) => ({ sheet: f.sheet, row: f.row, acsAt: f.acsAt || p.acsAt })));
   const acsLines = () => E.acsApprovedLines(state.acs, approved());
+  // Second-look outcomes, for the Outcome column on each copy
+  const withOutcome = () => state.second.map((it) => ({ it, text: state.decisions.get("outcome:" + it.id) })).filter((o) => o.text);
+  const lineOutcomes = () => withOutcome().flatMap(({ it, text }) => (it.p ? it.p.lines : it.f ? [it.f] : []).map((f) => ({ supplier: f.supplier, sheet: f.sheet, row: f.row, text })));
+  const itemOutcomes = () => withOutcome().flatMap(({ it, text }) => (it.p ? it.p.items : it.a ? [it.a] : []).map((item) => ({ item, text })));
   async function buildACS() {
     const wb = new ExcelJS.Workbook();
     await wb.xlsx.load(state.acs.buf.slice(0));
-    E.markACS(wb, acsLines());
+    E.markACS(wb, acsLines(), itemOutcomes());
     return new Blob([await wb.xlsx.writeBuffer()], { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" });
   }
 
@@ -1155,8 +1200,9 @@ details[open] > summary { margin-bottom: 10px; }
     const was = state.decisions.get("outcome:" + it.id);
     return {
       pill: was ? `<span class="pill ok">${esc(was)}</span>` : "",
-      buttons: `<div class="rv-outcomes">${outcomesFor(it).map((o, i) => `<button class="btn" data-out="${esc(o)}">${esc(o)} <kbd>${i + 1}</kbd></button>`).join("")}
-        <button class="btn" id="rvOther">Other</button></div>
+      buttons: `<div class="rv-outcome-head">What happened?</div>
+        <div class="rv-outcomes">${outcomesFor(it).map((o, i) => `<button class="btn" data-out="${esc(o)}" aria-pressed="${was === o}"><span>${esc(o)}</span><kbd>${i + 1}</kbd></button>`).join("")}
+        <button class="btn" id="rvOther" aria-pressed="${!!was && !outcomesFor(it).includes(was)}"><span>Other</span></button></div>
         ${state.otherOpen ? `<form class="rv-other" id="rvOtherForm"><input id="rvOtherText" aria-label="What happened" placeholder="What happened?" maxlength="120"><button class="btn">Save</button></form>` : ""}`,
     };
   }

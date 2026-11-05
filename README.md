@@ -12,7 +12,7 @@ Weekly check of what plant hire suppliers are charging ACS against the ACS on-hi
 
 Then, once everything is checked, suggestions in plain text: what each unknown plant code probably is on the ACS report (by on-hire date, rate, quantity and description), and where the ACS report's unpaired £0 items are on the supplier reports.
 
-Then you check each pairing one at a time (every plant-code match, plus each suggestion that has an ACS line) on a short card: item, cost, company and on-hire date side by side, ticked where they agree. Approve or reject it. It downloads marked-up copies where only the approved pairings are marked: green and bold on both the supplier report (plus an "ACS match" column) and the ACS report.
+Then you check each pairing one at a time (every plant-code match, plus each suggestion that has an ACS line) on a short card: item, cost, company and on-hire date side by side, ticked where they agree. Approve or reject it. It downloads marked-up copies where only the approved pairings are marked: green and bold on both the supplier report (plus an "ACS match" column) and the ACS report. After the pairings, a second look goes through anything that needs it, and what you say happened goes in an "Outcome" column.
 
 Edit `src/`, then run `python3 build.py` to rebuild `web/index.html`.
 
