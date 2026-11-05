@@ -4,7 +4,7 @@ Weekly check of what plant hire suppliers are charging ACS against the ACS on-hi
 
 ## Web app
 
-`web/index.html`: open it, drop in the ACS on-hire report and the supplier hire reports. Files are read in the browser and never uploaded. It shows, for each supplier:
+`web/index.html`: open it, drop in the ACS on-hire report and the supplier hire reports. Files are read in the browser. The only upload is "Open in Excel Online", which saves to your own OneDrive. It shows, for each supplier:
 
 - charged lines not on the ACS report
 - ACS plant from that supplier that isn't being charged
@@ -24,3 +24,12 @@ python3 hire_check.py <ACS_hire_report.xlsx> <supplier1.xlsx> [<supplier2.xlsx> 
 ```
 
 Writes `<file>_checked.xlsx` copies next to the originals and prints every plant code not on the ACS report. The script marks every plant-code match without asking; approving pairings one by one is in the web app only. See `CLAUDE.md` for the full rules.
+
+## Excel Online setup
+
+Done once, in [Microsoft Entra](https://entra.microsoft.com):
+
+1. App registrations > New registration. Name it Hire Check and choose "Personal Microsoft accounts only".
+2. Under Redirect URI choose Single-page application and enter `https://hire-checker.vercel.app/auth.html`.
+3. API permissions > Add a permission > Microsoft Graph > Delegated > `Files.ReadWrite`.
+4. Put the Application (client) ID in `MS` at the top of the Excel Online section of `src/app.js`, then run `python3 build.py`. It isn't a secret.

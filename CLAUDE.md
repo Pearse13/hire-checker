@@ -71,7 +71,7 @@ Keep it short. For each supplier, give either "all on ACS report" or the list of
 
 - https://hire-checker.vercel.app: public, works on any device including phones, no login. Also published privately on claude.ai: https://claude.ai/artifact/2DR6XUR3QU2BZEJmDcWLpH (republish it after each change).
 - GitHub: Pearse13/hire-checker (public). Pushing to `main` redeploys the Vercel site in about a minute.
-- Files are read in the viewer's browser and never uploaded.
+- Files are read in the viewer's browser. The only upload is "Open in Excel Online", which puts a marked-up copy in the viewer's own OneDrive. Nothing goes to any other server.
 
 ### How the page should look and work
 - Yellow "HIRE CHECK" header with hazard stripe, then nothing else above the upload boxes: no intro text, no notes at the bottom of the page.
@@ -87,6 +87,7 @@ Keep it short. For each supplier, give either "all on ACS report" or the list of
 - When the second look is finished, both marked-up copies download by themselves (only approved pairings marked), and **Step 4: Marked-up spreadsheets** appears (ACS copy first, one download per supplier, plus "Download all"). Under it is one tab per supplier with totals, "on both reports" (with the ACS cell and my Approved / Rejected / Waiting check) and the no-charge lines folded away.
 - Each supplier tab has a plant-code column picker, the web version of `--code-col`.
 - Downloads use Claude's download prompt on claude.ai and an ordinary browser download on the Vercel site.
+- Excel Online (Vercel site only): "Sign in to Microsoft" in Step 4, then each copy gets an "Open in Excel Online" button. It saves to `Hire Checks/<ACS report>/` in my OneDrive and opens in a new tab; pressing it again replaces that copy. The account is my personal Microsoft account (`tenantId: "consumers"`). The buttons stay hidden until `MS.clientId` is set in `src/app.js` (from the Microsoft app registration, see README). `web/auth.html` is the sign-in return page.
 
 ### Code
 - Source is `src/engine.js` (matching, suggestions, mark-up), `src/app.js` (screens) and `src/page.html`. Run `python3 build.py` to rebuild `web/index.html` after editing them. Never edit `web/index.html` by hand.

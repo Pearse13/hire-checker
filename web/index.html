@@ -220,6 +220,7 @@ tr.current td { box-shadow: inset 0 2px 0 var(--focus), inset 0 -2px 0 var(--foc
 .mk-head .step { font-size: 12px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.08em; color: var(--muted); }
 .mk-head h2 { font-size: 19px; font-weight: 600; }
 .mk-head p { margin: 2px 0 0; color: var(--muted); font-size: 14px; max-width: 68ch; }
+.mk-actions { display: flex; flex-wrap: wrap; gap: 8px; }
 .mk-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; }
 .mk-row { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 14px; padding-block: 10px; border-top: 1px solid var(--line); }
 .mk-name { flex: 1 1 260px; display: flex; flex-direction: column; gap: 2px; min-width: 0; }
@@ -976,6 +977,62 @@ details[open] > summary { margin-bottom: 10px; }
     }
   }
 
+  // ---------- Excel Online ----------
+  // From the Microsoft app registration. The Excel Online buttons stay hidden until clientId is filled in.
+  const MS = { clientId: "", tenantId: "consumers" };
+  const MSAL_JS = "https://cdn.jsdelivr.net/npm/@azure/msal-browser@3.30.0/lib/msal-browser.min.js";
+  const MS_SCOPES = ["Files.ReadWrite"];
+  const excelSaving = new Set();
+  let ms = null, msAccount = null;
+
+  async function startMicrosoft() {
+    if (!MS.clientId) return;
+    if (!window.msal) await new Promise((ok, no) => document.head.appendChild(Object.assign(document.createElement("script"), { src: MSAL_JS, onload: ok, onerror: no })));
+    const app = new msal.PublicClientApplication({
+      auth: { clientId: MS.clientId, authority: `https://login.microsoftonline.com/${MS.tenantId}`, redirectUri: location.origin + "/auth.html" },
+      cache: { cacheLocation: "sessionStorage" },
+    });
+    await app.initialize();
+    ms = app; msAccount = ms.getAllAccounts()[0] || null;
+    renderMarked();
+  }
+
+  async function msSignIn() {
+    try { msAccount = (await ms.loginPopup({ scopes: MS_SCOPES })).account; }
+    catch (e) { state.errors = ["Microsoft sign-in didn't finish. Try again."]; renderNotices(); }
+    renderMarked();
+  }
+
+  const oneDriveName = (t) => t.replace(/["*:<>?/\\|]/g, "-").trim();
+
+  // Saves one marked-up copy to Hire Checks/<ACS report> in the viewer's OneDrive and opens it in Excel Online.
+  // Pressing it again replaces that copy.
+  async function openInExcel(i) {
+    const s = i === "acs" ? null : state.suppliers[i];
+    const name = checkedName(s || state.acs);
+    // Opened here: browsers block a new tab once the upload has finished
+    const tab = window.open("", "_blank");
+    if (!tab) { state.errors = ["Your browser blocked the new tab. Allow pop-ups for this site, then press it again."]; renderNotices(); return; }
+    tab.document.title = name;
+    tab.document.body.textContent = "Saving to OneDrive…";
+    excelSaving.add(i); renderMarked();
+    try {
+      const { accessToken } = await ms.acquireTokenSilent({ scopes: MS_SCOPES, account: msAccount }).catch((e) => { msAccount = null; throw e; });
+      const data = s ? await buildChecked(s) : await buildACS();
+      const folder = state.acs.name.replace(/\.xlsx?m?$/i, "");
+      const path = ["Hire Checks", folder, name].map((p) => encodeURIComponent(oneDriveName(p))).join("/");
+      const res = await fetch(`https://graph.microsoft.com/v1.0/me/drive/root:/${path}:/content`, { method: "PUT", headers: { Authorization: `Bearer ${accessToken}`, "Content-Type": data.type }, body: data });
+      if (!res.ok) throw { status: res.status };
+      const { webUrl } = await res.json();
+      tab.location.href = webUrl;
+    } catch (e) {
+      tab.close();
+      state.errors = [!msAccount ? "Sign in to Microsoft again, then press it again." : e.status === 423 ? `${name} is open in Excel. Close it, then press it again.` : `${name} could not be saved to OneDrive.`];
+      renderNotices();
+    }
+    excelSaving.delete(i); renderMarked();
+  }
+
   // ---------- rendering ----------
   function renderFiles() {
     const acsBox = $("acsFiles"), supBox = $("supFiles");
@@ -1077,10 +1134,12 @@ details[open] > summary { margin-bottom: 10px; }
     const pill = (st) => st ? `<span class="pill ${st === "saved" ? "ok" : st === "saving" ? "warn" : "flag"}">${label[st]}</span>` : "";
     const lines = acsLines(), acsTotal = state.acs.items.length;
     const waiting = state.queue.filter((p) => !decisionOf(p)).length;
+    const excelBtn = (i) => msAccount ? `<button class="btn ghost" data-excel="${i}" ${excelSaving.has(i) ? "disabled" : ""}>${excelSaving.has(i) ? "Saving…" : "Open in Excel Online"}</button>` : "";
     const acsRow = `<li class="mk-row">
         <span class="mk-name"><span class="code">${esc(checkedName(state.acs))}</span><small>ACS report · ${plural(lines.length, "line")} marked</small></span>
         ${pill(state.acsSave)}
         <button class="btn ghost" data-save="acs" ${!downloads || state.acsSave === "saving" ? "disabled" : ""}>${state.acsSave === "saved" ? "Save again" : "Download"}</button>
+        ${excelBtn("acs")}
       </li>`;
     const rows = acsRow + state.suppliers.map((s, i) => {
       const n = supplierMarks(s).length, total = s.result.matched.length + s.result.flagged.length;
@@ -1088,6 +1147,7 @@ details[open] > summary { margin-bottom: 10px; }
         <span class="mk-name"><span class="code">${esc(checkedName(s))}</span><small>${plural(n, "line")} marked</small></span>
         ${pill(s.saveState)}
         <button class="btn ghost" data-save="${i}" ${!downloads || s.saveState === "saving" ? "disabled" : ""}>${s.saveState === "saved" ? "Save again" : "Download"}</button>
+        ${excelBtn(i)}
       </li>`;
     }).join("");
     const pending = state.acsSave === "saving" || state.suppliers.some((s) => s.saveState === "saving");
@@ -1095,13 +1155,18 @@ details[open] > summary { margin-bottom: 10px; }
       <div class="mk-head">
         <div><span class="step">Step 4</span><h2>Marked-up spreadsheets</h2>
         ${waiting ? `<p><b>${plural(waiting, "pairing")} skipped.</b></p>` : ""}</div>
-        <button class="btn" id="saveAll" ${!downloads || pending ? "disabled" : ""}>Download all (${state.suppliers.length + 1})</button>
+        <div class="mk-actions">
+          ${ms && !msAccount ? `<button class="btn" id="msSignIn">Sign in to Microsoft</button>` : ""}
+          <button class="btn" id="saveAll" ${!downloads || pending ? "disabled" : ""}>Download all (${state.suppliers.length + 1})</button>
+        </div>
       </div>
       <ul class="mk-list">${rows}</ul>
       ${downloads ? "" : `<p class="empty">Downloads aren't available in this view. Open the page on claude.ai, or run hire_check.py on your computer to make the same copies.</p>`}
     </section>`;
     box.querySelectorAll("[data-save]").forEach((b) => b.addEventListener("click", () => saveChecked(b.dataset.save === "acs" ? "acs" : +b.dataset.save)));
+    box.querySelectorAll("[data-excel]").forEach((b) => b.addEventListener("click", () => openInExcel(b.dataset.excel === "acs" ? "acs" : +b.dataset.excel)));
     const all = $("saveAll"); if (all) all.addEventListener("click", saveAll);
+    const signIn = $("msSignIn"); if (signIn) signIn.addEventListener("click", msSignIn);
   }
 
   const afterReport = (f) => f.date && state.acs.reportDate && f.date > state.acs.reportDate;
@@ -1337,6 +1402,7 @@ details[open] > summary { margin-bottom: 10px; }
       return { status: "saved" };
     } };
     renderMarked();
+    startMicrosoft().catch(() => {});
   }
 })();
 
