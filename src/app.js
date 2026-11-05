@@ -379,20 +379,31 @@
     const group = ls.length > 1 || (a.codes && a.codes.length > 1);
     // Assets on the ACS line that this supplier hasn't charged for
     const left = group && p.kind === "match" ? a.codes.filter((c) => !p.codes.includes(c)).slice(p.stand.length) : [];
-    const supItem = group
-      ? `<ul class="pc-lines">${ls.map((f, i) => `<li><span>${name(f.desc, f.raw)}${p.stand.includes(f) && p.kind === "match" ? `<span class="rv-kind">Different code</span>` : ""}</span><span>${cost(rates[i], f.qty)}</span></li>`).join("")}${left.map((c) => `<li class="pc-left"><span>Not charged<span class="pc-code">${esc(c)}</span></span></li>`).join("")}</ul>`
-      : name(ls[0].desc, ls[0].raw);
     const dates = [...new Set(ls.map((f) => f.date))];
-    return [
-      { k: "Item", s: supItem, a: name(a.desc, a.assetText || p.acsAt.join(", ")),
-        ok: ls.every((f) => f.desc) && !!a.desc && !left.length && (p.kind === "match" || sameWord) },
-      { k: group ? `Cost<br><small>total</small>` : "Cost", s: cost(fr, group ? 1 : ls[0].qty), a: cost(ar, group ? 1 : a.qty),
-        ok: fr != null && ar != null && (group ? near(fr, ar) : near(fr, ar) || near(fr * (a.qty || 1), ar) || near(fr * (ls[0].qty || 1), ar)) },
+    const rest = [
       { k: "Company", s: esc(company || shortName(ls[0].supplier)), a: a.company ? esc(a.company) : missing,
         ok: !!(company && a.company && company.toLowerCase() === a.company.toLowerCase()) },
       { k: "On hire", s: dates.map((d) => d ? fmtDate(d) : missing).join("<br>"), a: a.date ? fmtDate(a.date) : missing,
         ok: !!a.date && dates.length === 1 && dates[0] === a.date },
     ];
+    if (group) {
+      // Running tally: each supplier line adds its cost, ending on the ACS line's cost
+      let run = 0;
+      const lines = ls.map((f, i) => {
+        if (rates[i] != null) run += rates[i];
+        return `<tr><td>${name(f.desc, f.raw)}${p.stand.includes(f) && p.kind === "match" ? `<span class="rv-kind">Different code</span>` : ""}</td><td class="num">${cost(rates[i], 1)}</td><td class="num">£${run.toFixed(2)}</td></tr>`;
+      }).concat(left.map((c) => `<tr class="pc-left"><td>Not charged<span class="pc-code">${esc(c)}</span></td><td class="num">–</td><td class="num">£${run.toFixed(2)}</td></tr>`));
+      const ok = fr != null && ar != null && near(fr, ar) && !left.length;
+      return { group: true, title: a.desc, rows: rest, tally: `<table class="tally"><tbody>${lines.join("")}</tbody>
+        <tfoot><tr class="${ok ? "pc-ok" : "pc-bad"}"><th>Tally</th><td colspan="2" class="num"><b>£${run.toFixed(2)}</b> ${ok ? "=" : "≠"} ACS <b>${cost(ar, 1)}</b> <span class="pc-mark">${ok ? "✓" : "✗"}</span></td></tr></tfoot></table>` };
+    }
+    return { group: false, rows: [
+      { k: "Item", s: name(ls[0].desc, ls[0].raw), a: name(a.desc, a.assetText || p.acsAt.join(", ")),
+        ok: !!ls[0].desc && !!a.desc && (p.kind === "match" || sameWord) },
+      { k: "Cost", s: cost(fr, ls[0].qty), a: cost(ar, a.qty),
+        ok: fr != null && ar != null && (near(fr, ar) || near(fr * (a.qty || 1), ar) || near(fr * (ls[0].qty || 1), ar)) },
+      ...rest,
+    ] };
   }
 
   function renderReview() {
@@ -415,10 +426,12 @@
     const p = q[state.pos], d = decisionOf(p);
     // The ACS job sheet this pairing is on, as the card's title
     const job = [...new Set(p.items.length ? p.items.map((a) => a.sheet) : p.acsAt.map((c) => c.split("!")[0]))].join(", ");
-    const rows = checks(p).map((c) => `<tr class="${c.ok ? "pc-ok" : "pc-bad"}"><th>${c.k}</th><td>${c.s}</td><td>${c.a}</td><td class="pc-mark">${c.ok ? "✓" : "✗"}</td></tr>`).join("");
+    const c = checks(p);
+    const rows = c.rows.map((c) => `<tr class="${c.ok ? "pc-ok" : "pc-bad"}"><th>${c.k}</th><td>${c.s}</td><td>${c.a}</td><td class="pc-mark">${c.ok ? "✓" : "✗"}</td></tr>`).join("");
     box.innerHTML = `<section class="review">
-      <div class="rv-top"><h2 class="rv-job">${esc(job)}</h2><span class="rv-pos"><b>${state.pos + 1}</b> of ${n}</span>${p.kind !== "match" ? `<span class="rv-kind">Different code</span>` : ""}${d ? decisionPill(d) : ""}</div>
+      <div class="rv-top"><h2 class="rv-job">${esc(job)}${c.group ? `<small>${esc(c.title)}</small>` : ""}</h2><span class="rv-pos"><b>${state.pos + 1}</b> of ${n}</span>${p.kind !== "match" ? `<span class="rv-kind">Different code</span>` : ""}${d ? decisionPill(d) : ""}</div>
       <div class="rv-bar" aria-hidden="true"><span style="width:${100 * done / n}%"></span></div>
+      ${c.group ? c.tally : ""}
       <table class="pc"><thead><tr><th></th><th>Supplier</th><th>ACS</th><th></th></tr></thead><tbody>${rows}</tbody></table>
       <div class="rv-actions">
         <button class="btn big" id="rvYes">Approve <kbd>A</kbd></button>
